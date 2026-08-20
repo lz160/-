@@ -29,13 +29,26 @@ import {
   Moon,
   Globe,
   ShieldAlert,
+  ChevronDown,
+  UserCheck,
+  Coins,
 } from 'lucide-react';
 
-type ViewMode = 'CUSTOMER_H5' | 'KDS_STATIONS' | 'EXPO_PACK' | 'CALLING_TV' | 'COUNTER_SCAN' | 'SAAS_ADMIN' | 'SPLIT_SANDBOX' | 'ARCHITECTURE_SPEC';
+type ViewMode =
+  | 'SAAS_ADMIN'
+  | 'CUSTOMER_H5'
+  | 'COUNTER_SCAN'
+  | 'KDS_STATIONS'
+  | 'EXPO_PACK'
+  | 'CALLING_TV'
+  | 'SPLIT_SANDBOX'
+  | 'ARCHITECTURE_SPEC';
 
 const MainLayout: React.FC = () => {
   const {
-    store,
+    currentStore,
+    setCurrentStore,
+    stores,
     queueSummary,
     wsConnected,
     audioEnabled,
@@ -46,60 +59,167 @@ const MainLayout: React.FC = () => {
     currentLang,
     setCurrentLang,
     currentStaffUser,
+    setCurrentStaffUser,
+    staffUsers,
     t,
   } = useApp();
 
   const [currentView, setCurrentView] = useState<ViewMode>('SAAS_ADMIN');
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
+  const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
 
-  const activeLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === currentLang) || SUPPORTED_LANGUAGES[0];
+  const activeLangObj =
+    SUPPORTED_LANGUAGES.find((l) => l.code === currentLang) || SUPPORTED_LANGUAGES[0];
 
   return (
-    <div className={`w-screen h-screen flex flex-col overflow-hidden select-none font-sans transition-colors duration-200 ${
-      theme === 'light' ? 'bg-stone-100 text-stone-800' : 'bg-stone-950 text-stone-100'
-    }`}>
-      
+    <div
+      className={`w-screen h-screen flex flex-col overflow-hidden select-none font-sans transition-colors duration-150 ${
+        theme === 'light' ? 'bg-stone-100 text-stone-800' : 'bg-stone-950 text-stone-100'
+      }`}
+    >
       {/* Top Global Navigation & Multi-Role SaaS Control Bar */}
-      <header className={`px-3 py-2 shrink-0 z-30 shadow-xs border-b transition-colors ${
-        theme === 'light' ? 'bg-white border-stone-200 shadow-stone-200/50' : 'bg-stone-900 border-stone-800'
-      }`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          
-          {/* Logo & Store & Active Role Badge */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-stone-950 flex items-center justify-center font-black text-sm shadow-md">
+      <header
+        className={`px-3.5 py-2 shrink-0 z-30 shadow-xs border-b transition-colors ${
+          theme === 'light' ? 'bg-white border-stone-200' : 'bg-stone-900 border-stone-800'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          {/* Logo & Store Selector & Role Switcher */}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center font-black text-sm shadow-xs">
               茶
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-xs sm:text-sm">
-                  {store.storeName.split('(')[0]}
+
+            {/* 门店快速切换下拉菜单 */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStoreMenuOpen(!isStoreMenuOpen);
+                  setIsRoleMenuOpen(false);
+                  setIsLangMenuOpen(false);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-xs font-bold text-stone-800 transition"
+              >
+                <Store className="w-3.5 h-3.5 text-amber-600" />
+                <span className="max-w-[130px] truncate">{currentStore.storeName}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-mono">
+                  {currentStore.currency}
                 </span>
-                <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' : 'bg-amber-500 animate-ping'}`} />
-                <span className="text-[10px] px-2 py-0.2 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/20">
-                  {currentStaffUser.name} ({currentStaffUser.role === 'STORE_MANAGER' ? '店长' : currentStaffUser.role === 'SUPER_ADMIN' ? '超级管理员' : '收银员'})
+                <ChevronDown className="w-3 h-3 text-stone-400" />
+              </button>
+
+              {isStoreMenuOpen && (
+                <div className="absolute left-0 mt-1 w-64 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-100 mb-1 flex items-center justify-between">
+                    <span>切换当前门店上下文</span>
+                    <span className="font-mono text-amber-600">欧洲多国币种</span>
+                  </div>
+                  {stores.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentStore(s);
+                        setIsStoreMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
+                        currentStore.id === s.id
+                          ? 'bg-amber-500 text-stone-950 font-bold'
+                          : 'hover:bg-stone-100 text-stone-700'
+                      }`}
+                    >
+                      <div className="text-left">
+                        <div className="font-bold">{s.storeName}</div>
+                        <div className="text-[10px] text-stone-400 line-clamp-1">{s.address}</div>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-800 font-mono shrink-0 ml-1">
+                        {s.currency} ({s.currencySymbol})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 角色与权限快速切换 */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRoleMenuOpen(!isRoleMenuOpen);
+                  setIsStoreMenuOpen(false);
+                  setIsLangMenuOpen(false);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs font-bold text-amber-900 transition"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                <span className="max-w-[120px] truncate">{currentStaffUser.name}</span>
+                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-200 text-amber-950 font-bold">
+                  {currentStaffUser.role === 'SUPER_ADMIN'
+                    ? '卖系统的(Vendor)'
+                    : currentStaffUser.role === 'MERCHANT'
+                    ? '商家(Merchant)'
+                    : currentStaffUser.role === 'STORE_MANAGER'
+                    ? '店长(Manager)'
+                    : '收银员'}
                 </span>
-              </div>
-              <p className="text-[10px] text-stone-400">
-                {t('appSubTitle')}
-              </p>
+                <ChevronDown className="w-3 h-3 text-amber-700" />
+              </button>
+
+              {isRoleMenuOpen && (
+                <div className="absolute left-0 mt-1 w-72 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-100 mb-1">
+                    切换测试身份与权限矩阵
+                  </div>
+                  {staffUsers.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentStaffUser(u);
+                        setIsRoleMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
+                        currentStaffUser.id === u.id
+                          ? 'bg-amber-500 text-stone-950 font-bold'
+                          : 'hover:bg-stone-100 text-stone-700'
+                      }`}
+                    >
+                      <div className="text-left">
+                        <div className="font-bold">{u.name}</div>
+                        <div className="text-[10px] text-stone-400">
+                          {u.role === 'SUPER_ADMIN'
+                            ? 'SaaS总服务商 / 创建商家与分配店铺'
+                            : u.role === 'MERCHANT'
+                            ? '商家账户 / 营业额与商品销量分析'
+                            : u.role === 'STORE_MANAGER'
+                            ? '店长 / 当日销售数据与食材库存'
+                            : '收银操作员'}
+                        </div>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-800 font-mono shrink-0 ml-1">
+                        {u.role}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Core Viewport & Role Terminal Switcher */}
-          <div className={`flex items-center p-1 rounded-2xl border text-xs overflow-x-auto max-w-full ${
-            theme === 'light' ? 'bg-stone-100 border-stone-200' : 'bg-stone-950 border-stone-800'
-          }`}>
-            
-            {/* SaaS Admin Tab (Primary Requested) */}
+          <div className="flex items-center p-1 rounded-2xl border border-stone-200 bg-stone-100 text-xs overflow-x-auto max-w-full">
+            {/* SaaS Admin Tab */}
             <button
               id="nav-saas-admin-btn"
               type="button"
               onClick={() => setCurrentView('SAAS_ADMIN')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'SAAS_ADMIN'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <Building2 className="w-3.5 h-3.5" />
@@ -113,27 +233,12 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('SPLIT_SANDBOX')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'SPLIT_SANDBOX'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <Zap className="w-3.5 h-3.5" />
               <span>{t('splitSandbox')}</span>
-            </button>
-
-            {/* Customer H5 */}
-            <button
-              id="nav-customer-h5-btn"
-              type="button"
-              onClick={() => setCurrentView('CUSTOMER_H5')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
-                currentView === 'CUSTOMER_H5'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-              }`}
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>{t('customerH5')}</span>
             </button>
 
             {/* Counter POS */}
@@ -143,12 +248,27 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('COUNTER_SCAN')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'COUNTER_SCAN'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <QrCode className="w-3.5 h-3.5" />
               <span>{t('counterPos')}</span>
+            </button>
+
+            {/* Customer H5 */}
+            <button
+              id="nav-customer-h5-btn"
+              type="button"
+              onClick={() => setCurrentView('CUSTOMER_H5')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
+                currentView === 'CUSTOMER_H5'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>{t('customerH5')}</span>
             </button>
 
             {/* KDS Stations */}
@@ -158,8 +278,8 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('KDS_STATIONS')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'KDS_STATIONS'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <ChefHat className="w-3.5 h-3.5" />
@@ -173,8 +293,8 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('EXPO_PACK')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'EXPO_PACK'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <PackageCheck className="w-3.5 h-3.5" />
@@ -188,8 +308,8 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('CALLING_TV')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'CALLING_TV'
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <Tv className="w-3.5 h-3.5" />
@@ -203,8 +323,8 @@ const MainLayout: React.FC = () => {
               onClick={() => setCurrentView('ARCHITECTURE_SPEC')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
                 currentView === 'ARCHITECTURE_SPEC'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
               }`}
             >
               <Cpu className="w-3.5 h-3.5" />
@@ -212,18 +332,19 @@ const MainLayout: React.FC = () => {
             </button>
           </div>
 
-          {/* Multi-Language Switcher & Light/Dark Theme Switcher */}
+          {/* Multi-Language Switcher & Voice toggle */}
           <div className="flex items-center gap-2 text-xs">
-            
-            {/* Language Dropdown (Chinese, English, Slovak, and bordering countries: CZ, PL, HU, AT) */}
+            {/* Language Dropdown */}
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setIsLangMenuOpen(!isLangMenuOpen)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border font-bold transition ${
-                  theme === 'light' ? 'bg-stone-50 border-stone-200 hover:bg-stone-100 text-stone-700' : 'bg-stone-950 border-stone-800 hover:bg-stone-800 text-stone-200'
-                }`}
-                title="切换语言 (Slovak & Bordering Countries)"
+                onClick={() => {
+                  setIsLangMenuOpen(!isLangMenuOpen);
+                  setIsRoleMenuOpen(false);
+                  setIsStoreMenuOpen(false);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 font-bold transition"
+                title={t('langSwitch')}
               >
                 <span>{activeLangObj.flag}</span>
                 <span className="hidden sm:inline text-xs">{activeLangObj.nativeName.split(' ')[0]}</span>
@@ -231,11 +352,9 @@ const MainLayout: React.FC = () => {
               </button>
 
               {isLangMenuOpen && (
-                <div className={`absolute right-0 mt-1 w-52 rounded-2xl border p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 ${
-                  theme === 'light' ? 'bg-white border-stone-200 text-stone-800' : 'bg-stone-900 border-stone-800 text-stone-100'
-                }`}>
-                  <div className="px-2.5 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-200 dark:border-stone-800 mb-1">
-                    {t('langSwitch')} (Slovakia & Neighbors)
+                <div className="absolute right-0 mt-1 w-52 rounded-2xl border border-stone-200 bg-white p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-100 mb-1">
+                    {t('langSwitch')} (i18n Multi-Language)
                   </div>
                   {SUPPORTED_LANGUAGES.map((lang) => (
                     <button
@@ -248,65 +367,48 @@ const MainLayout: React.FC = () => {
                       className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition ${
                         currentLang === lang.code
                           ? 'bg-amber-500 text-stone-950 font-bold'
-                          : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300'
+                          : 'hover:bg-stone-100 text-stone-700'
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span>{lang.flag}</span>
                         <span>{lang.nativeName}</span>
                       </div>
-                      <span className="text-[10px] opacity-60 font-mono">
-                        {lang.code.toUpperCase()}
-                      </span>
+                      <span className="text-[10px] opacity-60 font-mono">{lang.code.toUpperCase()}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Theme Toggle (Light / Dark) */}
-            <button
-              type="button"
-              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-              className={`p-2 rounded-xl border transition ${
-                theme === 'light'
-                  ? 'bg-amber-50 border-amber-300 text-amber-600 hover:bg-amber-100 shadow-xs'
-                  : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-amber-400'
-              }`}
-              title={theme === 'light' ? t('themeLight') : t('themeDark')}
-            >
-              {theme === 'light' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-
             {/* Queue Counter & Voice toggle */}
-            <div className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs ${
-              theme === 'light' ? 'bg-stone-50 border-stone-200' : 'bg-stone-950 border-stone-800'
-            }`}>
-              <Clock className="w-3.5 h-3.5 text-amber-500" />
-              <span>{t('waitingQueue')}: <strong className="text-amber-500">{queueSummary.waitingCups}</strong> {t('cups')}</span>
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-stone-200 bg-stone-50 text-xs">
+              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span>
+                {t('waitingQueue')}: <strong className="text-amber-600 font-mono">{queueSummary.waitingCups}</strong>{' '}
+                {t('cups')}
+              </span>
             </div>
 
             <button
               type="button"
               onClick={() => setAudioEnabled(!audioEnabled)}
-              className={`p-2 rounded-xl border transition ${
+              className={`p-2 rounded-xl border border-stone-200 transition ${
                 audioEnabled
-                  ? 'bg-amber-500/20 border-amber-500/30 text-amber-500'
-                  : theme === 'light' ? 'bg-stone-50 border-stone-200 text-stone-400' : 'bg-stone-950 border-stone-800 text-stone-500'
+                  ? 'bg-amber-50 text-amber-600 border-amber-300'
+                  : 'bg-stone-50 text-stone-400 hover:text-stone-600'
               }`}
               title={audioEnabled ? '已开启语音播报' : '已静音'}
             >
               {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
           </div>
-
         </div>
       </header>
 
       {/* Main Screen Body */}
       <main className="flex-1 overflow-hidden relative">
-        
-        {/* VIEW 0: SaaS Admin Dashboard & Store Manager Category Control */}
+        {/* VIEW 0: SaaS Admin Dashboard */}
         {currentView === 'SAAS_ADMIN' && (
           <div className="w-full h-full overflow-hidden">
             <SaaSAdminDashboard />
@@ -315,22 +417,17 @@ const MainLayout: React.FC = () => {
 
         {/* VIEW 1: Split Sandbox Mode */}
         {currentView === 'SPLIT_SANDBOX' && (
-          <div className={`w-full h-full flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x overflow-hidden ${
-            theme === 'light' ? 'divide-stone-200 bg-stone-100' : 'divide-stone-800 bg-stone-950'
-          }`}>
-            
+          <div className="w-full h-full flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-stone-200 bg-stone-100 overflow-hidden">
             {/* Customer H5 Simulator */}
             <div className="w-full lg:w-96 shrink-0 h-1/2 lg:h-full flex flex-col p-2 sm:p-3 overflow-hidden">
               <div className="flex items-center justify-between pb-2 text-xs font-bold text-stone-500">
-                <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <span className="flex items-center gap-1.5 text-amber-700">
                   <Smartphone className="w-4 h-4" />
                   📱 {t('customerH5')}
                 </span>
-                <span className="text-[10px] text-stone-400">先付 + Stripe Webhook</span>
+                <span className="text-[10px] text-stone-400 font-mono">{currentStore.currency} 结账</span>
               </div>
-              <div className={`flex-1 border-2 rounded-3xl overflow-hidden shadow-xl relative ${
-                theme === 'light' ? 'bg-white border-stone-300' : 'bg-stone-900 border-stone-800'
-              }`}>
+              <div className="flex-1 border border-stone-300 rounded-3xl overflow-hidden shadow-sm relative bg-white">
                 <CustomerH5View />
               </div>
             </div>
@@ -338,7 +435,7 @@ const MainLayout: React.FC = () => {
             {/* KDS Kitchen */}
             <div className="flex-1 h-1/2 lg:h-full flex flex-col p-2 sm:p-3 overflow-hidden">
               <div className="flex items-center justify-between pb-2 text-xs font-bold text-stone-500">
-                <span className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400">
+                <span className="flex items-center gap-1.5 text-indigo-700">
                   <ChefHat className="w-4 h-4" />
                   🍳 {t('kdsStations')}
                 </span>
@@ -346,16 +443,14 @@ const MainLayout: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => simulateTraffic(1)}
-                    className="text-[11px] bg-stone-200 dark:bg-stone-800 hover:bg-amber-500 hover:text-stone-950 font-bold px-2 py-0.5 rounded-lg transition"
+                    className="text-[11px] bg-stone-200 hover:bg-amber-500 hover:text-stone-950 font-bold px-2 py-0.5 rounded-lg transition"
                   >
                     +注入1单测试
                   </button>
                   <span className="text-[10px] text-stone-400">水吧 / 炸台 / Expo</span>
                 </div>
               </div>
-              <div className={`flex-1 border-2 rounded-3xl overflow-hidden shadow-xl ${
-                theme === 'light' ? 'bg-white border-stone-300' : 'bg-stone-900 border-stone-800'
-              }`}>
+              <div className="flex-1 border border-stone-300 rounded-3xl overflow-hidden shadow-sm bg-white">
                 <KDSView />
               </div>
             </div>
@@ -363,28 +458,23 @@ const MainLayout: React.FC = () => {
             {/* Calling Screen TV */}
             <div className="hidden xl:flex w-96 shrink-0 h-full flex-col p-3 overflow-hidden">
               <div className="flex items-center justify-between pb-2 text-xs font-bold text-stone-500">
-                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <span className="flex items-center gap-1.5 text-emerald-700">
                   <Tv className="w-4 h-4" />
                   📢 {t('callingTv')}
                 </span>
-                <span className="text-[10px] text-stone-400">动态更新</span>
+                <span className="text-[10px] text-stone-400">取餐大屏</span>
               </div>
-              <div className={`flex-1 border-2 rounded-3xl overflow-hidden shadow-xl ${
-                theme === 'light' ? 'bg-white border-stone-300' : 'bg-stone-900 border-stone-800'
-              }`}>
+              <div className="flex-1 border border-stone-300 rounded-3xl overflow-hidden shadow-sm bg-white">
                 <CallingScreen />
               </div>
             </div>
-
           </div>
         )}
 
         {/* VIEW 2: Customer H5 Standalone */}
         {currentView === 'CUSTOMER_H5' && (
-          <div className="w-full h-full flex items-center justify-center p-0 sm:p-4 overflow-hidden">
-            <div className={`w-full h-full max-w-md max-h-[96vh] sm:border-2 sm:rounded-3xl sm:shadow-2xl overflow-hidden ${
-              theme === 'light' ? 'sm:bg-white sm:border-stone-300' : 'sm:bg-stone-900 sm:border-stone-800'
-            }`}>
+          <div className="w-full h-full flex items-center justify-center p-0 sm:p-4 overflow-hidden bg-stone-100">
+            <div className="w-full h-full max-w-md max-h-[96vh] sm:border sm:border-stone-300 sm:rounded-3xl sm:shadow-lg overflow-hidden bg-white">
               <CustomerH5View />
             </div>
           </div>
@@ -424,9 +514,7 @@ const MainLayout: React.FC = () => {
             <ArchitectureSpecView />
           </div>
         )}
-
       </main>
-
     </div>
   );
 };

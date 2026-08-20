@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ProductSKU, ModifierGroup, SelectedModifier } from '../../types';
+import { useApp } from '../../context/AppContext';
 import { X, Plus, Minus, Check, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -15,12 +16,24 @@ interface Props {
   }) => void;
 }
 
-export const ProductModifierModal: React.FC<Props> = ({ sku, modifierGroups, onClose, onAddToCart }) => {
+/**
+ * 商品规格与加料客制化弹窗
+ * 支持单选（甜度、冰度、杯型）与多选（芝士奶盖、黑糖珍珠、椰果等）
+ */
+export const ProductModifierModal: React.FC<Props> = ({
+  sku,
+  modifierGroups,
+  onClose,
+  onAddToCart,
+}) => {
+  const { store, theme, t } = useApp();
+  const isLight = theme === 'light';
+
   const relevantGroups = useMemo(() => {
     return modifierGroups.filter((g) => sku.modifierGroupIds.includes(g.id));
   }, [sku, modifierGroups]);
 
-  // Initial selection map: groupId -> Set of selected itemIds
+  // 初始选项映射：groupId -> 选中的 itemIds 数组
   const [selections, setSelections] = useState<Record<string, string[]>>(() => {
     const initial: Record<string, string[]> = {};
     relevantGroups.forEach((g) => {
@@ -37,7 +50,7 @@ export const ProductModifierModal: React.FC<Props> = ({ sku, modifierGroups, onC
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState('');
 
-  // Toggle modifier item
+  // 切换规格选项
   const handleToggle = (group: ModifierGroup, itemId: string) => {
     setSelections((prev) => {
       const current = prev[group.id] || [];
@@ -56,7 +69,7 @@ export const ProductModifierModal: React.FC<Props> = ({ sku, modifierGroups, onC
     });
   };
 
-  // Calculate Unit Price
+  // 计算单价与选中配料列表
   const { unitPrice, selectedModifiersList } = useMemo(() => {
     let price = sku.basePrice;
     const modsList: SelectedModifier[] = [];
@@ -92,76 +105,87 @@ export const ProductModifierModal: React.FC<Props> = ({ sku, modifierGroups, onC
   };
 
   return (
-    <div id="product-modifier-modal" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">
-      <div className="w-full max-w-lg max-h-[90vh] bg-stone-900 border border-stone-800 rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl text-stone-100 overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-        
-        {/* Header with Product Preview */}
-        <div className="relative p-5 pb-4 border-b border-stone-800/80 bg-stone-950/60 flex items-start gap-4">
+    <div
+      id="product-modifier-modal"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs p-0 sm:p-4"
+    >
+      <div
+        className={`w-full max-w-lg max-h-[90vh] rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl overflow-hidden transition-colors border ${
+          isLight ? 'bg-white border-stone-200 text-stone-900' : 'bg-stone-900 border-stone-800 text-stone-100'
+        }`}
+      >
+        {/* 顶部商品预览卡片 */}
+        <div
+          className={`relative p-5 pb-4 border-b flex items-start gap-4 ${
+            isLight ? 'bg-stone-50 border-stone-200' : 'bg-stone-950/60 border-stone-800'
+          }`}
+        >
           <img
             src={sku.image}
             alt={sku.name}
             referrerPolicy="no-referrer"
-            className="w-20 h-20 rounded-2xl object-cover border border-stone-800 shadow-md shrink-0"
+            className="w-18 h-18 rounded-2xl object-cover border border-stone-200 shrink-0 shadow-xs"
           />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 text-[11px] font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-md">
-                {sku.category}
-              </span>
-              <span className="text-xs text-stone-400">
-                出餐耗时 ~{sku.prepTimeSeconds}s
+
+          <div className="flex-1 min-w-0 pr-8">
+            <h3 className="text-base font-bold text-stone-900">{sku.name}</h3>
+            <p className="text-xs text-stone-500 line-clamp-2 mt-0.5">{sku.description}</p>
+            <div className="flex items-baseline gap-1 mt-1.5">
+              <span className="text-xs text-amber-600 font-bold">{store.currency}</span>
+              <span className="text-lg font-black text-amber-600">
+                {unitPrice.toFixed(2)}
               </span>
             </div>
-            <h3 className="text-lg font-bold text-stone-100 truncate">{sku.name}</h3>
-            <p className="text-xs text-stone-400 line-clamp-2 mt-0.5">{sku.description}</p>
           </div>
+
           <button
-            id="close-modifier-modal-btn"
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-full text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition"
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-700 flex items-center justify-center transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Scrollable Modifier Tree Options */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6 text-sm">
+        {/* 选项配置区 */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {relevantGroups.map((group) => {
-            const selectedIds = selections[group.id] || [];
+            const currentSelectedIds = selections[group.id] || [];
             return (
               <div key={group.id} className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-stone-200 flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-stone-800 uppercase tracking-wider">
                     {group.name}
-                    {group.required && <span className="text-amber-500 text-xs">*必选</span>}
                   </span>
-                  <span className="text-xs text-stone-400">
-                    {group.type === 'SINGLE' ? '单选' : `多选 (最多${group.maxSelections}项)`}
+                  <span className="text-[11px] text-stone-500">
+                    {group.type === 'SINGLE'
+                      ? '单选'
+                      : `多选 (最多 ${group.maxSelections || '无限制'})`}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {group.items.map((item) => {
-                    const isSelected = selectedIds.includes(item.id);
+                    const isSelected = currentSelectedIds.includes(item.id);
                     return (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => handleToggle(group, item.id)}
-                        className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-left transition duration-150 ${
+                        className={`px-3 py-2.5 rounded-xl border text-xs font-medium text-left flex items-center justify-between transition ${
                           isSelected
-                            ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-medium shadow-xs shadow-amber-500/10'
-                            : 'bg-stone-800/60 border-stone-700/60 text-stone-300 hover:bg-stone-800 hover:border-stone-600'
+                            ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold shadow-xs'
+                            : isLight
+                            ? 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
+                            : 'bg-stone-800/80 border-stone-700 text-stone-300 hover:bg-stone-800'
                         }`}
                       >
-                        <span className="truncate text-xs">{item.name}</span>
+                        <span className="truncate">{item.name}</span>
                         {item.price > 0 && (
-                          <span className={`text-[11px] shrink-0 ml-1.5 ${isSelected ? 'text-amber-400 font-bold' : 'text-stone-400'}`}>
-                            +{item.price}元
+                          <span className="text-[11px] text-amber-600 shrink-0 ml-1 font-semibold">
+                            +{store.currency}
+                            {item.price}
                           </span>
-                        )}
-                        {isSelected && group.type === 'SINGLE' && (
-                          <Check className="w-3.5 h-3.5 text-amber-400 shrink-0 ml-1" />
                         )}
                       </button>
                     );
@@ -171,68 +195,61 @@ export const ProductModifierModal: React.FC<Props> = ({ sku, modifierGroups, onC
             );
           })}
 
-          {/* Special Notes input */}
-          <div className="space-y-1.5 pt-2 border-t border-stone-800/80">
-            <label className="text-xs font-semibold text-stone-300">特殊定制备注 (选填)</label>
+          {/* 特殊要求备注 */}
+          <div className="space-y-1.5 pt-2 border-t border-stone-200">
+            <label className="text-xs font-bold text-stone-800">特殊要求备注</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="如：分装打包、多给一根粗吸管、少放冰块..."
-              className="w-full px-3.5 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500/80"
+              placeholder="例如: 多放椰果、不要吸管、分装等"
+              className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none focus:border-amber-500 ${
+                isLight
+                  ? 'bg-stone-50 border-stone-200 text-stone-900 placeholder:text-stone-400'
+                  : 'bg-stone-950 border-stone-800 text-stone-100 placeholder:text-stone-500'
+              }`}
             />
           </div>
         </div>
 
-        {/* Bottom Pricing & Add to Cart Action */}
-        <div className="p-5 border-t border-stone-800 bg-stone-950/80 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-xs text-stone-400">单品小计</div>
-            <div className="text-2xl font-black text-amber-400 flex items-baseline">
-              <span className="text-sm mr-0.5">¥</span>
-              {(unitPrice * quantity).toFixed(1)}
-              {quantity > 1 && (
-                <span className="text-xs text-stone-400 font-normal ml-2">
-                  (¥{unitPrice}/份)
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Stepper */}
-            <div className="flex items-center bg-stone-800 rounded-xl border border-stone-700/80 p-1">
-              <button
-                type="button"
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-300 hover:bg-stone-700 hover:text-white transition disabled:opacity-30"
-                disabled={quantity <= 1}
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-              <span className="w-8 text-center text-sm font-bold text-stone-100">{quantity}</span>
-              <button
-                type="button"
-                onClick={() => setQuantity(quantity + 1)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-stone-300 hover:bg-stone-700 hover:text-white transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Submit Button */}
+        {/* 底部数量加减与加入购物车 */}
+        <div
+          className={`p-4 border-t flex items-center justify-between gap-4 ${
+            isLight ? 'bg-stone-50 border-stone-200' : 'bg-stone-950 border-stone-800'
+          }`}
+        >
+          {/* 数量调节器 */}
+          <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-2xl p-1 shadow-xs">
             <button
-              id="confirm-add-to-cart-btn"
               type="button"
-              onClick={handleConfirm}
-              className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-sm rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2 transition active:scale-98"
+              onClick={() => setQuantity(Math.max(1, quantity - 1))}
+              disabled={quantity <= 1}
+              className="w-8 h-8 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 disabled:opacity-30 flex items-center justify-center transition"
             >
-              <Sparkles className="w-4 h-4" />
-              加入待点单
+              <Minus className="w-4 h-4" />
+            </button>
+            <span className="w-6 text-center font-bold text-sm text-stone-900">{quantity}</span>
+            <button
+              type="button"
+              onClick={() => setQuantity(quantity + 1)}
+              className="w-8 h-8 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center transition"
+            >
+              <Plus className="w-4 h-4" />
             </button>
           </div>
-        </div>
 
+          {/* 确定加入购物车按钮 */}
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="flex-1 py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-sm shadow-md active:scale-98 transition flex items-center justify-between"
+          >
+            <span>{t('addToCart')}</span>
+            <span>
+              {store.currency} {(unitPrice * quantity).toFixed(2)}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   );

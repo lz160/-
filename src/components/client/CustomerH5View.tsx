@@ -6,20 +6,19 @@ import { StripeCheckoutModal } from './StripeCheckoutModal';
 import { OrderTrackingView } from './OrderTrackingView';
 import {
   ShoppingBag,
-  Sparkles,
   Clock,
-  Flame,
-  ChevronRight,
-  Trash2,
+  MapPin,
   Plus,
   Minus,
-  Store,
-  MapPin,
-  Smartphone,
-  Info,
-  CheckCircle,
+  Sparkles,
+  ChevronRight,
+  Flame,
 } from 'lucide-react';
 
+/**
+ * 顾客手机端 H5 点单页面
+ * 支持商品分类切换、加料选配、购物车管理、Stripe 沙盒预结账及后厨制作追踪
+ */
 export const CustomerH5View: React.FC = () => {
   const {
     store,
@@ -29,6 +28,8 @@ export const CustomerH5View: React.FC = () => {
     createOrder,
     activeOrderForTracking,
     setActiveOrderForTracking,
+    t,
+    theme,
   } = useApp();
 
   const [activeCategory, setActiveCategory] = useState<string>('招牌鲜奶茶');
@@ -40,17 +41,17 @@ export const CustomerH5View: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [unpaidOrderToCheckout, setUnpaidOrderToCheckout] = useState<any | null>(null);
 
-  // Extract unique categories
+  // 提取唯一分类列表
   const categories = Array.from(new Set(products.map((p) => p.category)));
 
-  // Filter products by active category
+  // 过滤当前选中分类的商品
   const filteredProducts = products.filter((p) => p.category === activeCategory);
 
-  // Cart calculations
+  // 购物车计算
   const cartTotalAmount = cart.reduce((sum, item) => sum + item.itemTotalPrice, 0);
   const cartTotalCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Add customized item to cart
+  // 添加客制化商品至购物车
   const handleAddToCart = (item: {
     sku: ProductSKU;
     quantity: number;
@@ -58,7 +59,7 @@ export const CustomerH5View: React.FC = () => {
     unitPrice: number;
     notes?: string;
   }) => {
-    const cartItemId = `cart_${Date.now()}_${Math.random()}`;
+    const cartItemId = `cart_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const newCartItem: CartItem = {
       cartItemId,
       sku: item.sku,
@@ -71,6 +72,7 @@ export const CustomerH5View: React.FC = () => {
     setCart((prev) => [...prev, newCartItem]);
   };
 
+  // 修改购物车内单项数量
   const updateCartQuantity = (cartItemId: string, delta: number) => {
     setCart((prev) =>
       prev
@@ -90,7 +92,7 @@ export const CustomerH5View: React.FC = () => {
     );
   };
 
-  // Submit cart & open Stripe payment modal
+  // 提交订单并弹出支付模态框
   const handleInitiateOrder = async () => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
@@ -112,61 +114,86 @@ export const CustomerH5View: React.FC = () => {
     }
   };
 
+  const isLight = theme === 'light';
+
   return activeOrderForTracking ? (
-    <div className="w-full h-full bg-stone-950 flex flex-col">
+    <div className={`w-full h-full flex flex-col ${isLight ? 'bg-stone-100' : 'bg-stone-950'}`}>
       <OrderTrackingView
         order={activeOrderForTracking}
         onBackToMenu={() => setActiveOrderForTracking(null)}
       />
     </div>
   ) : (
-    <div id="customer-h5-view" className="w-full h-full bg-stone-950 flex flex-col relative text-stone-100 overflow-hidden">
-      
-      {/* Mobile Header with Dynamic Queue Status */}
-      <div className="bg-stone-900 border-b border-stone-800 p-4 shrink-0 shadow-md">
+    <div
+      id="customer-h5-view"
+      className={`w-full h-full flex flex-col relative overflow-hidden transition-colors ${
+        isLight ? 'bg-stone-50 text-stone-900' : 'bg-stone-950 text-stone-100'
+      }`}
+    >
+      {/* 顶部门店信息与排队状态 */}
+      <div
+        className={`p-4 shrink-0 shadow-sm transition-colors border-b ${
+          isLight ? 'bg-white border-stone-200' : 'bg-stone-900 border-stone-800'
+        }`}
+      >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-black text-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-stone-950 font-black text-sm flex items-center justify-center shadow-sm">
               茶
             </div>
             <div>
-              <h2 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
+              <h2 className="font-bold text-sm text-stone-900 flex items-center gap-1.5">
                 {store.storeName}
               </h2>
-              <p className="text-[11px] text-stone-400 flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-stone-500" />
-                无桌台外带自提窗口・即买即走
+              <p className="text-[11px] text-stone-500 flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-stone-400" />
+                {t('takeoutOnly')}
               </p>
             </div>
           </div>
 
           <div className="text-right">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 text-xs font-semibold">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              营业中
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              {t('openNow')}
             </span>
           </div>
         </div>
 
-        {/* Real-time Dynamic SLA & Waiting Cups Badge */}
-        <div className="mt-3 bg-stone-950/70 border border-stone-800/80 rounded-xl p-2.5 flex items-center justify-between text-xs">
+        {/* 实时排队情况及预计等待时间 */}
+        <div
+          className={`mt-3 rounded-xl p-2.5 flex items-center justify-between text-xs border ${
+            isLight
+              ? 'bg-amber-50/60 border-amber-200/80 text-stone-700'
+              : 'bg-stone-950/70 border-stone-800/80 text-stone-300'
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400" />
-            <span className="text-stone-300">
-              当前前方等待 <strong className="text-amber-400">{queueSummary.waitingCups}</strong> 杯
+            <Clock className="w-4 h-4 text-amber-600" />
+            <span>
+              {t('currentWaiting')}{' '}
+              <strong className="text-amber-600 font-bold">{queueSummary.waitingCups}</strong>{' '}
+              {t('cups')}
             </span>
           </div>
-          <div className="text-stone-400">
-            预计制作耗时: <strong className="text-stone-200">~{queueSummary.avgWaitTimeMinutes}</strong> 分钟
+          <div className="text-stone-500">
+            {t('estimatedWaitTime')}:{' '}
+            <strong className="text-stone-800 font-semibold">
+              ~{queueSummary.avgWaitTimeMinutes}
+            </strong>{' '}
+            {t('minutes')}
           </div>
         </div>
       </div>
 
-      {/* Main Content: Left Category List + Right Product Grid */}
+      {/* 主体点单区：左侧分类列表 + 右侧商品列表 */}
       <div className="flex-1 flex overflow-hidden">
-        
-        {/* Left Categories Sidebar */}
-        <div className="w-24 sm:w-28 bg-stone-900/60 border-r border-stone-800 overflow-y-auto shrink-0 py-2">
+        {/* 左侧分类导航 */}
+        <div
+          className={`w-24 sm:w-28 border-r overflow-y-auto shrink-0 py-2 transition-colors ${
+            isLight ? 'bg-stone-100/90 border-stone-200' : 'bg-stone-900/60 border-stone-800'
+          }`}
+        >
           {categories.map((cat) => {
             const isActive = activeCategory === cat;
             return (
@@ -174,10 +201,10 @@ export const CustomerH5View: React.FC = () => {
                 key={cat}
                 type="button"
                 onClick={() => setActiveCategory(cat)}
-                className={`w-full px-2.5 py-3.5 text-left text-xs font-medium border-l-2 transition flex flex-col gap-0.5 ${
+                className={`w-full px-2.5 py-3.5 text-left text-xs font-medium border-l-3 transition flex flex-col gap-0.5 ${
                   isActive
-                    ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold'
-                    : 'border-transparent text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
+                    ? 'bg-white border-amber-600 text-amber-700 font-bold shadow-xs'
+                    : 'border-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-200/50'
                 }`}
               >
                 <span>{cat}</span>
@@ -186,14 +213,14 @@ export const CustomerH5View: React.FC = () => {
           })}
         </div>
 
-        {/* Right Product Listings */}
+        {/* 右侧商品卡片列表 */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 pb-24">
-          <div className="flex items-center justify-between border-b border-stone-800/80 pb-2">
-            <h3 className="text-xs font-bold text-stone-300 uppercase tracking-wider">
+          <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+            <h3 className="text-xs font-bold text-stone-700 uppercase tracking-wider">
               {activeCategory} ({filteredProducts.length})
             </h3>
-            <span className="text-[11px] text-stone-500">
-              {activeCategory.includes('茶') ? '水吧制作台' : '炸台/铁板煎烤'}
+            <span className="text-[11px] text-stone-400">
+              {activeCategory.includes('茶') ? t('waterBarStation') : t('fryerStation')}
             </span>
           </div>
 
@@ -201,56 +228,61 @@ export const CustomerH5View: React.FC = () => {
             {filteredProducts.map((prod) => (
               <div
                 key={prod.id}
-                className="bg-stone-900/90 border border-stone-800/80 rounded-2xl p-3 flex gap-3 hover:border-stone-700 transition relative overflow-hidden"
+                className={`border rounded-2xl p-3 flex gap-3 transition relative overflow-hidden ${
+                  isLight
+                    ? 'bg-white border-stone-200 shadow-xs hover:border-amber-400'
+                    : 'bg-stone-900/90 border-stone-800/80 hover:border-stone-700'
+                }`}
               >
-                {/* Image */}
+                {/* 商品配图 */}
                 <img
                   src={prod.image}
                   alt={prod.name}
                   referrerPolicy="no-referrer"
-                  className="w-22 h-22 sm:w-24 sm:h-24 rounded-xl object-cover border border-stone-800 shrink-0"
+                  className="w-20 h-20 sm:w-22 sm:h-22 rounded-xl object-cover border border-stone-200 shrink-0"
                 />
 
-                {/* Details */}
+                {/* 商品详情 */}
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div>
                     <div className="flex items-start justify-between gap-1">
-                      <h4 className="text-sm font-bold text-stone-100 truncate">{prod.name}</h4>
+                      <h4 className="text-sm font-bold text-stone-900 truncate">{prod.name}</h4>
                     </div>
 
                     {prod.tags && prod.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {prod.tags.map((t, idx) => (
+                        {prod.tags.map((tg, idx) => (
                           <span
                             key={idx}
-                            className="px-1.5 py-0.2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[10px]"
+                            className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200/80 rounded text-[10px] font-medium"
                           >
-                            {t}
+                            {tg}
                           </span>
                         ))}
                       </div>
                     )}
 
-                    <p className="text-[11px] text-stone-400 line-clamp-2 mt-1">
+                    <p className="text-[11px] text-stone-500 line-clamp-2 mt-1">
                       {prod.description}
                     </p>
                   </div>
 
-                  {/* Price & Customize Button */}
-                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-stone-800/40">
-                    <div className="text-base font-black text-amber-400">
-                      ¥{prod.basePrice}
-                      <span className="text-[10px] text-stone-500 font-normal ml-0.5">起</span>
+                  {/* 价格与选配按钮 */}
+                  <div className="flex items-center justify-between mt-2 pt-1 border-t border-stone-100">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs text-amber-600 font-bold">{store.currency}</span>
+                      <span className="text-base font-black text-amber-600">
+                        {prod.basePrice.toFixed(2)}
+                      </span>
                     </div>
 
                     <button
-                      id={`select-sku-${prod.id}`}
                       type="button"
                       onClick={() => setSelectedSkuForModifier(prod)}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl flex items-center gap-1 shadow-sm transition active:scale-95"
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 text-stone-950 text-xs font-bold shadow-xs hover:bg-amber-400 active:scale-95 transition"
                     >
-                      <span>选规格</span>
                       <Plus className="w-3.5 h-3.5" />
+                      <span>{t('selectModifiers')}</span>
                     </button>
                   </div>
                 </div>
@@ -258,163 +290,50 @@ export const CustomerH5View: React.FC = () => {
             ))}
           </div>
         </div>
-
       </div>
 
-      {/* Floating Bottom Cart Bar */}
+      {/* 底部悬浮购物车栏 */}
       {cart.length > 0 && (
-        <div className="absolute bottom-3 left-3 right-3 z-30 animate-in slide-in-from-bottom-4 duration-200">
-          <div className="bg-stone-900 border border-amber-500/40 rounded-2xl p-3 shadow-2xl flex items-center justify-between backdrop-blur-md">
-            
-            <button
-              type="button"
-              onClick={() => setIsCartOpen(!isCartOpen)}
-              className="flex items-center gap-3 text-left"
-            >
-              <div className="relative">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center text-stone-950 font-black shadow-md">
-                  <ShoppingBag className="w-5 h-5" />
-                </div>
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[11px] font-bold flex items-center justify-center border-2 border-stone-900">
-                  {cartTotalCount}
-                </span>
+        <div
+          className={`absolute bottom-0 inset-x-0 border-t p-3.5 flex items-center justify-between gap-3 shadow-xl backdrop-blur-md transition-colors ${
+            isLight
+              ? 'bg-white/95 border-stone-200 text-stone-900'
+              : 'bg-stone-900/95 border-stone-800 text-stone-100'
+          }`}
+        >
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => setIsCartOpen(!isCartOpen)}
+          >
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500 text-stone-950 flex items-center justify-center font-bold shadow-md">
+                <ShoppingBag className="w-6 h-6" />
               </div>
+              <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[11px] font-black rounded-full px-1.5 py-0.5 border-2 border-white">
+                {cartTotalCount}
+              </span>
+            </div>
 
-              <div>
-                <div className="text-xs text-stone-400">预选清单</div>
-                <div className="text-lg font-black text-amber-400">
-                  ¥{cartTotalAmount.toFixed(1)}
-                </div>
+            <div>
+              <div className="text-xs text-stone-500 font-medium">{t('totalPrice')}</div>
+              <div className="text-lg font-black text-amber-600">
+                {store.currency} {cartTotalAmount.toFixed(2)}
               </div>
-            </button>
-
-            <button
-              id="open-cart-checkout-btn"
-              type="button"
-              onClick={handleInitiateOrder}
-              disabled={isSubmitting}
-              className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/25 flex items-center gap-1.5 transition active:scale-98"
-            >
-              <span>去先付结算</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsCartOpen(true)}
+            className="px-6 py-2.5 rounded-2xl bg-amber-500 text-stone-950 text-sm font-bold shadow-md hover:bg-amber-400 active:scale-95 transition flex items-center gap-1.5"
+          >
+            <span>{t('checkout')}</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Cart Drawer Modal */}
-      {isCartOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs flex items-end justify-center p-0 sm:p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-stone-900 border border-stone-800 rounded-t-3xl sm:rounded-3xl p-5 text-stone-100 max-h-[85vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-              <h4 className="font-bold text-sm flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-amber-400" />
-                已选单品明细 ({cartTotalCount} 件)
-              </h4>
-              <button
-                type="button"
-                onClick={() => setCart([])}
-                className="text-xs text-stone-400 hover:text-rose-400 flex items-center gap-1"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                清空待点单
-              </button>
-            </div>
-
-            {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-stone-800/60 py-2 space-y-2">
-              {cart.map((item) => (
-                <div key={item.cartItemId} className="py-2.5 flex items-start justify-between gap-3 text-xs">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-200">{item.sku.name}</div>
-                    <div className="text-[11px] text-stone-400 flex flex-wrap gap-1 mt-0.5">
-                      {item.selectedModifiers.map((m, idx) => (
-                        <span key={idx} className="bg-stone-800 px-1.5 py-0.5 rounded text-stone-300">
-                          {m.itemName}
-                        </span>
-                      ))}
-                    </div>
-                    {item.notes && (
-                      <div className="text-[10px] text-amber-500 italic mt-0.5">
-                        备注: {item.notes}
-                      </div>
-                    )}
-                    <div className="text-amber-400 font-bold mt-1">¥{item.itemTotalPrice.toFixed(1)}</div>
-                  </div>
-
-                  {/* Quantity Stepper */}
-                  <div className="flex items-center bg-stone-800 rounded-lg border border-stone-700/80 p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => updateCartQuantity(item.cartItemId, -1)}
-                      className="w-6 h-6 flex items-center justify-center text-stone-300 hover:text-white"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-6 text-center font-bold text-stone-200 text-xs">{item.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateCartQuantity(item.cartItemId, 1)}
-                      className="w-6 h-6 flex items-center justify-center text-stone-300 hover:text-white"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Optional Customer Phone & Store Pickup Note */}
-            <div className="pt-3 border-t border-stone-800 space-y-2 text-xs">
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="顾客手机号 (选填，用于取餐短信/推送)"
-                className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500"
-              />
-              <input
-                type="text"
-                value={orderNotes}
-                onChange={(e) => setOrderNotes(e.target.value)}
-                placeholder="整单备注 (如：全部打包外带)"
-                className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-
-            {/* Total and Checkout button */}
-            <div className="pt-4 border-t border-stone-800 flex items-center justify-between gap-4 mt-2">
-              <div>
-                <div className="text-xs text-stone-400">实付总额</div>
-                <div className="text-xl font-black text-amber-400">¥{cartTotalAmount.toFixed(1)}</div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCartOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-stone-700 text-stone-300 text-xs hover:bg-stone-800"
-                >
-                  继续选购
-                </button>
-                <button
-                  id="submit-order-prepay-btn"
-                  type="button"
-                  onClick={handleInitiateOrder}
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5"
-                >
-                  <span>立即支付</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Modifier Customization Modal */}
+      {/* 选配弹窗 */}
       {selectedSkuForModifier && (
         <ProductModifierModal
           sku={selectedSkuForModifier}
@@ -424,7 +343,121 @@ export const CustomerH5View: React.FC = () => {
         />
       )}
 
-      {/* Stripe Pre-Pay Modal */}
+      {/* 购物车展开弹层 */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-150">
+          <div
+            className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl border shadow-2xl flex flex-col max-h-[85vh] overflow-hidden ${
+              isLight ? 'bg-white border-stone-200' : 'bg-stone-900 border-stone-800'
+            }`}
+          >
+            <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-amber-600" />
+                <h3 className="font-bold text-sm text-stone-900">
+                  {t('cart')} ({cartTotalCount})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCart([])}
+                className="text-xs text-rose-600 hover:text-rose-700 font-medium"
+              >
+                {t('clearCart')}
+              </button>
+            </div>
+
+            {/* 购物车单项列表 */}
+            <div className="p-4 overflow-y-auto space-y-3 divide-y divide-stone-100">
+              {cart.map((item) => (
+                <div key={item.cartItemId} className="pt-3 first:pt-0 flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <h4 className="text-xs font-bold text-stone-900">{item.sku.name}</h4>
+                    {item.selectedModifiers.length > 0 && (
+                      <p className="text-[11px] text-stone-500 mt-0.5">
+                        {item.selectedModifiers.map((m) => m.itemName).join(' / ')}
+                      </p>
+                    )}
+                    {item.notes && (
+                      <p className="text-[10px] text-amber-700 mt-0.5">备注: {item.notes}</p>
+                    )}
+                    <div className="text-xs font-bold text-amber-600 mt-1">
+                      {store.currency} {item.itemTotalPrice.toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-stone-100 rounded-xl p-1 border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => updateCartQuantity(item.cartItemId, -1)}
+                      className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-stone-700 hover:bg-stone-200"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-xs font-bold text-stone-800 px-1">{item.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateCartQuantity(item.cartItemId, 1)}
+                      className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-stone-700 hover:bg-stone-200"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 顾客信息输入 */}
+            <div className="p-4 bg-stone-50 border-t border-stone-200 space-y-3">
+              <div>
+                <label className="text-[11px] font-semibold text-stone-600 block mb-1">
+                  {t('customerPhone')}
+                </label>
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="例如: 13800000000"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-stone-600 block mb-1">
+                  {t('orderNotes')}
+                </label>
+                <input
+                  type="text"
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  placeholder="例如: 奶盖分开装，少冰"
+                  className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCartOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-stone-600 hover:text-stone-800"
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleInitiateOrder}
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 text-stone-950 font-bold text-xs shadow-md hover:bg-amber-400 active:scale-95 disabled:opacity-50 transition"
+                >
+                  {isSubmitting ? '提交中...' : `${t('checkout')} (${store.currency} ${cartTotalAmount.toFixed(2)})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stripe 支付模态框 */}
       {unpaidOrderToCheckout && (
         <StripeCheckoutModal
           order={unpaidOrderToCheckout}
@@ -436,7 +469,6 @@ export const CustomerH5View: React.FC = () => {
           }}
         />
       )}
-
     </div>
   );
 };

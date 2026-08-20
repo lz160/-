@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ProductSKU, ModifierGroup, SelectedModifier, CartItem } from '../../types';
+import { ProductSKU, SelectedModifier, CartItem } from '../../types';
 import { ProductModifierModal } from '../client/ProductModifierModal';
 import {
   ShoppingBag,
@@ -9,49 +9,47 @@ import {
   Trash2,
   CreditCard,
   Banknote,
-  QrCode,
   CheckCircle2,
   Printer,
-  Sparkles,
   Search,
-  RotateCcw,
-  Phone,
-  MessageSquare,
   Receipt,
   Clock,
   Zap,
-  Tag,
-  ArrowRight,
   X,
 } from 'lucide-react';
 
+/**
+ * 吧台现场点单与收银结算视图 (POS)
+ * 支持现金找零计算、POS卡号输入及小票打印（已按要求删除聚合扫码功能）
+ */
 export const CounterPOSOrderView: React.FC = () => {
-  const { products, modifierGroups, createCounterOrderAndPay } = useApp();
+  const { products, modifierGroups, createCounterOrderAndPay, currentStore, formatPrice, theme, t } = useApp();
+  const isLight = theme === 'light';
 
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCart, setActiveCart] = useState<CartItem[]>([]);
   const [activeModalSku, setActiveModalSku] = useState<ProductSKU | null>(null);
-  
+
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
 
-  // Payment Checkout Modal State
+  // 结算模态框状态
   const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'POS_CARD' | 'COUNTER_WECHAT' | 'COUNTER_ALIPAY'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'POS_CARD'>('CASH');
   const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Success Receipt State
+  // 结算成功打印小票状态
   const [completedOrderData, setCompletedOrderData] = useState<any | null>(null);
 
-  // Categories list derived from products
+  // 分类列表
   const categories = useMemo(() => {
     const set = new Set(products.map((p) => p.category));
     return ['ALL', ...Array.from(set)];
   }, [products]);
 
-  // Filtered Products
+  // 过滤商品
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
@@ -64,7 +62,7 @@ export const CounterPOSOrderView: React.FC = () => {
     });
   }, [products, selectedCategory, searchQuery]);
 
-  // Cart Totals
+  // 购物车合计
   const totalAmount = useMemo(() => {
     return activeCart.reduce((sum, item) => sum + item.itemTotalPrice, 0);
   }, [activeCart]);
@@ -73,18 +71,17 @@ export const CounterPOSOrderView: React.FC = () => {
     return activeCart.reduce((sum, item) => sum + item.quantity, 0);
   }, [activeCart]);
 
-  // Cash calculations
+  // 现金计算
   const cashReceivedNumber = parseFloat(cashReceivedInput) || 0;
   const cashChangeAmount = Math.max(0, cashReceivedNumber - totalAmount);
   const isCashInsufficient = cashReceivedNumber < totalAmount;
 
-  // Handle click on product card
+  // 点击商品卡片
   const handleProductClick = (sku: ProductSKU) => {
     if (sku.isSoldOut) return;
     if (sku.modifierGroupIds && sku.modifierGroupIds.length > 0) {
       setActiveModalSku(sku);
     } else {
-      // Direct add to cart
       addToCart({
         sku,
         quantity: 1,
@@ -101,44 +98,22 @@ export const CounterPOSOrderView: React.FC = () => {
     unitPrice: number;
     notes?: string;
   }) => {
-    const modSig = newItem.selectedModifiers
-      .map((m) => m.itemId)
-      .sort()
-      .join('-');
-    const cartItemId = `${newItem.sku.id}_${modSig}`;
-
-    setActiveCart((prev) => {
-      const existingIdx = prev.findIndex((i) => i.cartItemId === cartItemId);
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        const current = updated[existingIdx];
-        const newQty = current.quantity + newItem.quantity;
-        updated[existingIdx] = {
-          ...current,
-          quantity: newQty,
-          itemTotalPrice: newQty * current.unitPrice,
-        };
-        return updated;
-      } else {
-        return [
-          ...prev,
-          {
-            cartItemId,
-            sku: newItem.sku,
-            quantity: newItem.quantity,
-            selectedModifiers: newItem.selectedModifiers,
-            unitPrice: newItem.unitPrice,
-            itemTotalPrice: newItem.quantity * newItem.unitPrice,
-            notes: newItem.notes,
-          },
-        ];
-      }
-    });
+    const cartItemId = `pos_item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const item: CartItem = {
+      cartItemId,
+      sku: newItem.sku,
+      quantity: newItem.quantity,
+      selectedModifiers: newItem.selectedModifiers,
+      unitPrice: newItem.unitPrice,
+      itemTotalPrice: newItem.unitPrice * newItem.quantity,
+      notes: newItem.notes,
+    };
+    setActiveCart((prev) => [...prev, item]);
   };
 
-  const updateCartItemQuantity = (cartItemId: string, delta: number) => {
-    setActiveCart((prev) => {
-      return prev
+  const updateCartQty = (cartItemId: string, delta: number) => {
+    setActiveCart((prev) =>
+      prev
         .map((item) => {
           if (item.cartItemId === cartItemId) {
             const nextQty = item.quantity + delta;
@@ -146,360 +121,281 @@ export const CounterPOSOrderView: React.FC = () => {
             return {
               ...item,
               quantity: nextQty,
-              itemTotalPrice: nextQty * item.unitPrice,
+              itemTotalPrice: item.unitPrice * nextQty,
             };
           }
           return item;
         })
-        .filter(Boolean) as CartItem[];
-    });
+        .filter(Boolean) as CartItem[]
+    );
   };
 
-  const clearCart = () => {
-    setActiveCart([]);
-    setCustomerPhone('');
-    setOrderNotes('');
+  // 快捷填入实收现金金额
+  const handleQuickCash = (amount: number) => {
+    setCashReceivedInput(amount.toString());
   };
 
-  // Open Checkout Modal
-  const handleOpenCheckout = () => {
+  // 结算订单
+  const handleProcessCheckout = async () => {
     if (activeCart.length === 0) return;
-    setCashReceivedInput(totalAmount.toString());
-    setPaymentMethod('CASH');
-    setIsCheckoutModalOpen(true);
-  };
-
-  // Submit Order and Settle Payment
-  const handleConfirmPayment = async () => {
-    if (isSubmitting || activeCart.length === 0) return;
-    if (paymentMethod === 'CASH' && isCashInsufficient) return;
+    if (paymentMethod === 'CASH' && isCashInsufficient) {
+      alert('实收现金不足，请核对金额');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
-      const itemsPayload = activeCart.map((item) => ({
-        skuId: item.sku.id,
-        quantity: item.quantity,
-        selectedModifiers: item.selectedModifiers,
-        notes: item.notes,
+      const itemsPayload = activeCart.map((c) => ({
+        skuId: c.sku.id,
+        quantity: c.quantity,
+        selectedModifiers: c.selectedModifiers,
+        notes: c.notes,
       }));
+
+      const paymentDetails: any = {};
+      if (paymentMethod === 'CASH') {
+        paymentDetails.cashDetails = {
+          receivedAmount: cashReceivedNumber,
+          changeAmount: cashChangeAmount,
+        };
+      } else if (paymentMethod === 'POS_CARD') {
+        paymentDetails.cardDetails = {
+          cardLast4: '8899',
+          authCode: `AUTH_${Math.floor(100000 + Math.random() * 900000)}`,
+        };
+      }
 
       const res = await createCounterOrderAndPay({
         items: itemsPayload,
         paymentMethod,
-        cashDetails:
-          paymentMethod === 'CASH'
-            ? {
-                receivedAmount: cashReceivedNumber,
-                changeAmount: cashChangeAmount,
-              }
-            : undefined,
-        cardDetails:
-          paymentMethod === 'POS_CARD'
-            ? {
-                cardLast4: '6228',
-                authCode: `AUTH_${Math.floor(100000 + Math.random() * 900000)}`,
-              }
-            : undefined,
-        customerPhone: customerPhone || undefined,
-        notes: orderNotes || undefined,
+        cashDetails: paymentDetails.cashDetails,
+        cardDetails: paymentDetails.cardDetails,
+        customerPhone: customerPhone ? customerPhone.trim() : undefined,
+        notes: orderNotes ? orderNotes.trim() : undefined,
+        storeId: currentStore.id,
       });
 
-      setCompletedOrderData(res);
+      // 弹出打印小票
+      setCompletedOrderData({
+        order: res.order,
+        cashReceived: cashReceivedNumber,
+        cashChange: cashChangeAmount,
+      });
+
+      // 清空购物车
+      setActiveCart([]);
+      setCustomerPhone('');
+      setOrderNotes('');
       setIsCheckoutModalOpen(false);
-      clearCart();
+      setCashReceivedInput('');
     } catch (err: any) {
-      alert('吧台结算失败: ' + err.message);
+      alert(err.message || '结算失败');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div id="counter-pos-order-view" className="w-full h-full flex flex-col lg:flex-row bg-stone-950 text-stone-100 overflow-hidden select-none">
-      
-      {/* LEFT SECTION: Catalog & Product Selector */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-stone-800 bg-stone-950 overflow-hidden">
-        
-        {/* Header & Quick Search Bar */}
-        <div className="p-3 sm:p-4 bg-stone-900 border-b border-stone-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div>
-            <h3 className="text-sm sm:text-base font-black text-amber-400 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              吧台现场快速点单收银终端 (POS)
-            </h3>
-            <p className="text-xs text-stone-400">
-              触屏点单・定制规格加料・现金找零・POS刷卡与聚合扫码极速出单
-            </p>
+    <div className="h-full flex flex-col md:flex-row bg-stone-100 text-stone-900 overflow-hidden select-none">
+      {/* 左侧点单区 (分类 + 菜品列表) */}
+      <div className="flex-1 flex flex-col border-r border-stone-200 overflow-hidden">
+        {/* 顶部搜索与分类栏 */}
+        <div className="p-3.5 bg-white border-b border-stone-200 flex flex-wrap items-center justify-between gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索餐品名称、分类..."
+              className="w-full pl-9 pr-4 py-2 bg-stone-100 border border-stone-200 rounded-xl text-xs text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-amber-500"
+            />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索单品 / 首字母 / 分类..."
-                className="w-full pl-9 pr-3 py-1.5 bg-stone-950 border border-stone-700 rounded-xl text-xs text-stone-100 placeholder-stone-500 focus:outline-none focus:border-amber-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
+                  selectedCategory === cat
+                    ? 'bg-amber-500 text-stone-950 shadow-xs'
+                    : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                {cat === 'ALL' ? '全部品类' : cat}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Category Filter Chips */}
-        <div className="px-3 py-2 bg-stone-950 border-b border-stone-800/80 flex items-center gap-1.5 overflow-x-auto shrink-0 scrollbar-none">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 ${
-                selectedCategory === cat
-                  ? 'bg-amber-500 text-stone-950 shadow-md'
-                  : 'bg-stone-900 text-stone-400 hover:text-stone-200 hover:bg-stone-800'
-              }`}
-            >
-              {cat === 'ALL' ? '全部品类' : cat}
-            </button>
-          ))}
-        </div>
+        {/* 菜品网格 */}
+        <div className="flex-1 p-4 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+          {filteredProducts.map((sku) => {
+            const hasMods = sku.modifierGroupIds && sku.modifierGroupIds.length > 0;
+            return (
+              <button
+                key={sku.id}
+                type="button"
+                disabled={sku.isSoldOut}
+                onClick={() => handleProductClick(sku)}
+                className={`p-3 rounded-2xl bg-white border border-stone-200 text-left flex flex-col justify-between hover:border-amber-400 hover:shadow-md transition relative group active:scale-98 ${
+                  sku.isSoldOut ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {sku.isSoldOut && (
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-stone-900/80 text-white text-[10px] font-bold">
+                    已沽清
+                  </span>
+                )}
+                {hasMods && !sku.isSoldOut && (
+                  <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[10px] font-bold">
+                    选规格
+                  </span>
+                )}
 
-        {/* Product SKU Touch Grid */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredProducts.map((sku) => {
-              const inCartCount = activeCart
-                .filter((i) => i.sku.id === sku.id)
-                .reduce((s, i) => s + i.quantity, 0);
-
-              return (
-                <div
-                  key={sku.id}
-                  id={`pos-sku-${sku.id}`}
-                  onClick={() => handleProductClick(sku)}
-                  className={`group relative bg-stone-900 border rounded-2xl p-3 flex flex-col justify-between cursor-pointer transition active:scale-98 shadow-md ${
-                    sku.isSoldOut
-                      ? 'opacity-40 border-stone-800 cursor-not-allowed'
-                      : inCartCount > 0
-                      ? 'border-amber-500/80 bg-stone-900/90 shadow-amber-500/10'
-                      : 'border-stone-800 hover:border-amber-500/50 hover:bg-stone-850'
-                  }`}
-                >
-                  {/* Badge of in-cart count */}
-                  {inCartCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-amber-500 text-stone-950 font-black text-xs flex items-center justify-center shadow-lg border-2 border-stone-950 z-10 animate-in zoom-in-50">
-                      {inCartCount}
-                    </span>
-                  )}
-
-                  <div>
-                    <div className="aspect-4/3 rounded-xl overflow-hidden mb-2 bg-stone-950 relative">
-                      <img
-                        src={sku.image}
-                        alt={sku.name}
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
-                      <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-stone-950/80 text-[10px] font-mono text-stone-300">
-                        {sku.targetStationId === 'station_bar' ? '水吧' : sku.targetStationId === 'station_fryer' ? '炸台' : '后厨'}
-                      </span>
-                    </div>
-
-                    <h4 className="font-bold text-xs sm:text-sm text-stone-100 line-clamp-1 group-hover:text-amber-300 transition">
+                <div className="flex items-start gap-2.5 mb-2">
+                  <img
+                    src={sku.image}
+                    alt={sku.name}
+                    className="w-14 h-14 rounded-xl object-cover shrink-0 border border-stone-100"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-xs text-stone-900 line-clamp-2 leading-snug">
                       {sku.name}
                     </h4>
-                    <p className="text-[11px] text-stone-400 line-clamp-1 mt-0.5">
-                      {sku.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 pt-2 border-t border-stone-800/80 flex items-center justify-between">
-                    <div className="text-amber-400 font-bold font-mono text-sm sm:text-base">
-                      ¥{sku.basePrice}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={sku.isSoldOut}
-                      className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-300 group-hover:bg-amber-500 group-hover:text-stone-950 font-bold text-xs flex items-center gap-1 transition"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{sku.modifierGroupIds.length > 0 ? '选规格' : '点选'}</span>
-                    </button>
+                    <span className="inline-block mt-1 text-[10px] font-medium text-stone-400">
+                      {sku.category}
+                    </span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+
+                <div className="flex items-center justify-between mt-auto pt-2 border-t border-stone-100">
+                  <span className="text-sm font-black text-amber-600">
+                    {formatPrice(sku.basePrice)}
+                  </span>
+                  <div className="w-6 h-6 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-stone-950 transition">
+                    <Plus className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* RIGHT SECTION: Active Bill, Cart & Payment Console */}
-      <div className="w-full lg:w-96 xl:w-104 bg-stone-900 flex flex-col shrink-0 border-t lg:border-t-0 border-stone-800 overflow-hidden shadow-2xl">
-        
-        {/* Cart Header */}
-        <div className="p-3.5 bg-stone-900 border-b border-stone-800 flex items-center justify-between shrink-0">
+      {/* 右侧购物车与结算控制台 */}
+      <div className="w-full md:w-96 bg-white flex flex-col justify-between border-t md:border-t-0 border-stone-200 shrink-0">
+        {/* 顶部标题栏 */}
+        <div className="p-3.5 border-b border-stone-200 flex items-center justify-between bg-stone-50">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-amber-500 text-stone-950 flex items-center justify-center font-black">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className="font-black text-sm text-stone-100">
-                当前收银账单 (Cart)
-              </h4>
-              <span className="text-[10px] text-stone-400">
-                共 {totalItemsCount} 件品项
-              </span>
-            </div>
+            <ShoppingBag className="w-4 h-4 text-amber-600" />
+            <h3 className="font-black text-xs text-stone-900">当前点单清单 ({totalItemsCount})</h3>
           </div>
-
           {activeCart.length > 0 && (
             <button
               type="button"
-              onClick={clearCart}
-              className="text-xs text-rose-400 hover:text-rose-300 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-500/10 transition"
+              onClick={() => setActiveCart([])}
+              className="text-[11px] text-stone-400 hover:text-rose-600 flex items-center gap-1 transition"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>清空账单</span>
+              <Trash2 className="w-3 h-3" />
+              <span>清空</span>
             </button>
           )}
         </div>
 
-        {/* Cart Item List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {/* 购物车条目列表 */}
+        <div className="flex-1 p-3.5 overflow-y-auto space-y-2.5 divide-y divide-stone-100">
           {activeCart.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-stone-500 space-y-2">
-              <ShoppingBag className="w-12 h-12 text-stone-700 stroke-1" />
-              <p className="text-xs font-semibold">点击左侧菜品即可加入当前收银账单</p>
+            <div className="h-full flex flex-col items-center justify-center text-stone-400 py-12">
+              <ShoppingBag className="w-10 h-10 stroke-1 mb-2 opacity-40" />
+              <p className="text-xs">暂无点餐商品，请点击左侧菜品加入</p>
             </div>
           ) : (
             activeCart.map((item) => (
-              <div
-                key={item.cartItemId}
-                className="bg-stone-950 border border-stone-800 rounded-2xl p-3 space-y-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="font-bold text-xs sm:text-sm text-stone-100">
-                      {item.sku.name}
-                    </div>
-                    {item.selectedModifiers.length > 0 && (
-                      <div className="text-[11px] text-amber-400/90 mt-0.5">
-                        {item.selectedModifiers.map((m) => m.itemName).join(' / ')}
-                      </div>
-                    )}
-                    {item.notes && (
-                      <div className="text-[10px] text-stone-400 mt-0.5">
-                        备注: {item.notes}
-                      </div>
-                    )}
+              <div key={item.cartItemId} className="pt-2 first:pt-0 flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-xs text-stone-900 truncate">
+                    {item.sku.name}
                   </div>
-                  <div className="text-right">
-                    <span className="font-mono font-bold text-sm text-amber-400">
-                      ¥{item.itemTotalPrice}
-                    </span>
+                  {item.selectedModifiers.length > 0 && (
+                    <p className="text-[11px] text-stone-500 line-clamp-1">
+                      {item.selectedModifiers.map((m) => m.itemName).join(' / ')}
+                    </p>
+                  )}
+                  <div className="text-xs font-bold text-amber-600 mt-0.5">
+                    {formatPrice(item.itemTotalPrice)}
                   </div>
                 </div>
 
-                {/* Quantity Stepper */}
-                <div className="flex items-center justify-between pt-2 border-t border-stone-800/80">
-                  <span className="text-[11px] text-stone-500 font-mono">
-                    单价: ¥{item.unitPrice}
-                  </span>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateCartItemQuantity(item.cartItemId, -1)}
-                      className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center transition"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="w-6 text-center font-mono font-black text-xs text-stone-100">
-                      {item.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateCartItemQuantity(item.cartItemId, 1)}
-                      className="w-6 h-6 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 flex items-center justify-center transition"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                <div className="flex items-center gap-1.5 bg-stone-100 rounded-xl p-1 border border-stone-200">
+                  <button
+                    type="button"
+                    onClick={() => updateCartQty(item.cartItemId, -1)}
+                    className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-stone-700 hover:bg-stone-200"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="text-xs font-bold text-stone-800 px-1">{item.quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => updateCartQty(item.cartItemId, 1)}
+                    className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-stone-700 hover:bg-stone-200"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             ))
           )}
         </div>
 
-        {/* Optional Customer Phone & Remarks */}
-        <div className="p-3 bg-stone-950/80 border-t border-stone-800 space-y-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Phone className="w-3.5 h-3.5 text-stone-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="顾客手机号 (选填/积分通知)"
-                className="w-full pl-8 pr-2 py-1.5 bg-stone-900 border border-stone-700 rounded-xl text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <div className="relative flex-1">
-              <MessageSquare className="w-3.5 h-3.5 text-stone-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={orderNotes}
-                onChange={(e) => setOrderNotes(e.target.value)}
-                placeholder="整单备注 (如少辣/打包)"
-                className="w-full pl-8 pr-2 py-1.5 bg-stone-900 border border-stone-700 rounded-xl text-xs text-stone-200 placeholder-stone-600 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
+        {/* 顾客电话与特殊备注 */}
+        <div className="p-3.5 bg-stone-50 border-t border-stone-200 space-y-2">
+          <input
+            type="tel"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="顾客手机号 (选填，用于短信通知)"
+            className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-amber-500"
+          />
+          <input
+            type="text"
+            value={orderNotes}
+            onChange={(e) => setOrderNotes(e.target.value)}
+            placeholder="订单特殊备注 (如: 多放吸管、分袋打包)"
+            className="w-full px-3 py-1.5 bg-white border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-amber-500"
+          />
         </div>
 
-        {/* Bill Summary & Payment Trigger */}
-        <div className="p-4 bg-stone-900 border-t border-stone-800 space-y-3 shrink-0">
+        {/* 结算支付区 */}
+        <div className="p-4 border-t border-stone-200 bg-white space-y-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-xs font-bold text-stone-400">应收总金额:</span>
-            <div className="text-right">
-              <span className="text-2xl font-black font-mono text-amber-400">
-                ¥{totalAmount}
-              </span>
-              <span className="text-[10px] text-stone-500 block">
-                含税 / 包含选配加料费
+            <span className="text-xs text-stone-500 font-medium">应收合计:</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black text-amber-600">
+                {formatPrice(totalAmount)}
               </span>
             </div>
           </div>
 
           <button
             type="button"
-            id="pos-proceed-payment-btn"
             disabled={activeCart.length === 0}
-            onClick={handleOpenCheckout}
-            className={`w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-xl transition active:scale-98 ${
-              activeCart.length === 0
-                ? 'bg-stone-800 text-stone-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-amber-500/20'
-            }`}
+            onClick={() => {
+              setCashReceivedInput(totalAmount.toString());
+              setIsCheckoutModalOpen(true);
+            }}
+            className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-stone-950 font-black text-sm shadow-md active:scale-98 transition flex items-center justify-center gap-2"
           >
-            <Banknote className="w-4 h-4" />
-            <span>立即结算收款 (¥{totalAmount})</span>
-            <ArrowRight className="w-4 h-4" />
+            <Banknote className="w-5 h-5" />
+            <span>立即收款结算 ({formatPrice(totalAmount)})</span>
           </button>
         </div>
       </div>
 
-      {/* MODAL 1: Product Modifier Selector */}
+      {/* 规格加料客制化模态框 */}
       {activeModalSku && (
         <ProductModifierModal
           sku={activeModalSku}
@@ -509,317 +405,212 @@ export const CounterPOSOrderView: React.FC = () => {
         />
       )}
 
-      {/* MODAL 2: Counter Payment Settlement Modal (Cash/POS Card/QR Pay) */}
+      {/* 收款结算弹窗 */}
       {isCheckoutModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-stone-900 border border-stone-800 rounded-3xl p-5 sm:p-6 shadow-2xl text-stone-100 space-y-5">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-stone-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center font-black">
-                  <Banknote className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-stone-100">
-                    吧台收银结算与支付方式
-                  </h3>
-                  <p className="text-xs text-stone-400">
-                    应收总额: <strong className="text-amber-400 font-mono">¥{totalAmount}</strong> (共 {totalItemsCount} 件)
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCheckoutModalOpen(false)}
-                className="p-1.5 rounded-xl bg-stone-800 text-stone-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div
+            className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 relative overflow-hidden transition-colors ${
+              isLight ? 'bg-white border-stone-200 text-stone-900' : 'bg-stone-900 border-stone-800 text-stone-100'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsCheckoutModalOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 flex items-center justify-center transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <h3 className="text-base font-black text-stone-900 mb-1">吧台收银结算</h3>
+            <p className="text-xs text-stone-500 mb-4">请选择现金收银或POS刷卡结算</p>
+
+            {/* 应付金额提示 */}
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 mb-4 flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-900">应付总金额</span>
+              <span className="text-2xl font-black text-amber-600 font-mono">
+                {formatPrice(totalAmount)}
+              </span>
             </div>
 
-            {/* Payment Method Switcher Tabs */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* 支付方式选择 (仅保留现金与POS刷卡，已删除聚合扫码) */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 type="button"
-                id="pay-tab-cash"
                 onClick={() => setPaymentMethod('CASH')}
-                className={`py-2.5 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition ${
+                className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
                   paymentMethod === 'CASH'
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200'
+                    ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs ring-2 ring-amber-400/20'
+                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
                 }`}
               >
-                <Banknote className="w-5 h-5" />
-                <span className="text-xs">💵 现金收款</span>
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <span>{t('cashPayment')}</span>
               </button>
 
               <button
                 type="button"
-                id="pay-tab-card"
                 onClick={() => setPaymentMethod('POS_CARD')}
-                className={`py-2.5 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition ${
+                className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
                   paymentMethod === 'POS_CARD'
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200'
+                    ? 'bg-amber-50 border-amber-500 text-amber-900 shadow-xs ring-2 ring-amber-400/20'
+                    : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
                 }`}
               >
-                <CreditCard className="w-5 h-5" />
-                <span className="text-xs">💳 POS 刷卡/插卡</span>
-              </button>
-
-              <button
-                type="button"
-                id="pay-tab-qr"
-                onClick={() => setPaymentMethod('COUNTER_WECHAT')}
-                className={`py-2.5 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition ${
-                  paymentMethod === 'COUNTER_WECHAT' || paymentMethod === 'COUNTER_ALIPAY'
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200'
-                }`}
-              >
-                <QrCode className="w-5 h-5" />
-                <span className="text-xs">📱 聚合扫码支付</span>
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                <span>{t('posCardPayment')}</span>
               </button>
             </div>
 
-            {/* TAB 1: CASH PAYMENT CONTROLLER */}
+            {/* 现金支付找零计算 */}
             {paymentMethod === 'CASH' && (
-              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-4">
-                <div className="space-y-1">
-                  <div className="text-xs text-stone-400 font-medium">实收现金金额 (¥):</div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-lg font-bold text-amber-400 font-mono">¥</span>
-                    <input
-                      type="number"
-                      value={cashReceivedInput}
-                      onChange={(e) => setCashReceivedInput(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2.5 bg-stone-900 border border-stone-700 rounded-xl text-xl font-bold font-mono text-stone-100 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3 mb-4">
+                <div>
+                  <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                    {t('cashReceived')} ({currentStore.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    value={cashReceivedInput}
+                    onChange={(e) => setCashReceivedInput(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl font-mono text-base font-bold text-stone-900 focus:outline-none focus:border-amber-500"
+                  />
                 </div>
 
-                {/* Quick Cash Buttons */}
-                <div className="flex gap-2">
+                {/* 快捷面额选择 */}
+                <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setCashReceivedInput(totalAmount.toString())}
-                    className="flex-1 py-1.5 bg-stone-800 hover:bg-stone-700 rounded-xl text-xs font-bold text-stone-300"
+                    onClick={() => handleQuickCash(totalAmount)}
+                    className="px-2.5 py-1 bg-white border border-stone-200 hover:bg-stone-100 rounded-lg text-xs font-bold text-stone-700"
                   >
-                    刚好 (¥{totalAmount})
+                    {t('exactAmount')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCashReceivedInput((Math.ceil(totalAmount / 10) * 10).toString())}
-                    className="flex-1 py-1.5 bg-stone-800 hover:bg-stone-700 rounded-xl text-xs font-bold text-stone-300"
-                  >
-                    整十 (¥{Math.ceil(totalAmount / 10) * 10})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCashReceivedInput('50')}
-                    className="flex-1 py-1.5 bg-stone-800 hover:bg-stone-700 rounded-xl text-xs font-bold text-stone-300"
-                  >
-                    ¥50
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCashReceivedInput('100')}
-                    className="flex-1 py-1.5 bg-stone-800 hover:bg-stone-700 rounded-xl text-xs font-bold text-stone-300"
-                  >
-                    ¥100
-                  </button>
+                  {[10, 20, 50, 100, 200, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => handleQuickCash(amt)}
+                      className="px-2.5 py-1 bg-white border border-stone-200 hover:bg-stone-100 rounded-lg text-xs font-bold text-stone-700"
+                    >
+                      {currentStore.currencySymbol} {amt}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Change Breakdown */}
-                <div className="p-3 bg-stone-900/90 rounded-xl flex items-center justify-between">
-                  <span className="text-xs text-stone-400">系统应找零 (Change):</span>
-                  <span className={`text-lg font-black font-mono ${isCashInsufficient ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {isCashInsufficient ? `金额不足 (差 ¥${(totalAmount - cashReceivedNumber).toFixed(1)})` : `¥${cashChangeAmount.toFixed(1)}`}
+                {/* 找零计算结果 */}
+                <div className="pt-2 border-t border-stone-200 flex justify-between items-center text-xs">
+                  <span className="font-bold text-stone-700">{t('cashChange')}:</span>
+                  <span
+                    className={`text-base font-black font-mono ${
+                      isCashInsufficient ? 'text-rose-600' : 'text-emerald-600'
+                    }`}
+                  >
+                    {isCashInsufficient ? '实收不足' : formatPrice(cashChangeAmount)}
                   </span>
                 </div>
               </div>
             )}
 
-            {/* TAB 2: POS CARD PAYMENT CONTROLLER */}
+            {/* 刷卡提示 */}
             {paymentMethod === 'POS_CARD' && (
-              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-stone-200">
-                    外接 EMV / 银联 / Visa 刷卡机终端就绪
-                  </h4>
-                  <p className="text-xs text-stone-400 mt-1">
-                    请提示顾客在POS机具上贴卡或插卡，输入密码后点击确认
-                  </p>
-                </div>
-                <div className="p-2.5 bg-stone-900 rounded-xl font-mono text-xs text-emerald-400 flex items-center justify-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>POS机通讯正常 (Terminal ID: POS_88012)</span>
-                </div>
+              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-900 mb-4 space-y-1">
+                <p className="font-bold">✓ POS 刷卡 / 芯片插卡 / NFC感应</p>
+                <p className="text-[11px] text-blue-700">请提示顾客在终端机刷卡或感应支付</p>
               </div>
             )}
 
-            {/* TAB 3: COUNTER QR WECHAT / ALIPAY */}
-            {(paymentMethod === 'COUNTER_WECHAT' || paymentMethod === 'COUNTER_ALIPAY') && (
-              <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-3 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
-                  <QrCode className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-stone-200">
-                    吧台红外扫码枪付款 / 聚合码
-                  </h4>
-                  <p className="text-xs text-stone-400 mt-1">
-                    使用扫码枪扫描顾客微信/支付宝付款码，或顾客扫描台卡立牌
-                  </p>
-                </div>
-                <div className="flex justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('COUNTER_WECHAT')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
-                      paymentMethod === 'COUNTER_WECHAT'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-stone-800 text-stone-400'
-                    }`}
-                  >
-                    微信支付 (WeChat Pay)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('COUNTER_ALIPAY')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
-                      paymentMethod === 'COUNTER_ALIPAY'
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-stone-800 text-stone-400'
-                    }`}
-                  >
-                    支付宝 (Alipay)
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsCheckoutModalOpen(false)}
-                className="flex-1 py-3 bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs rounded-2xl transition"
-              >
-                取消返回
-              </button>
-              <button
-                type="button"
-                id="pos-confirm-and-print-btn"
-                disabled={isSubmitting || (paymentMethod === 'CASH' && isCashInsufficient)}
-                onClick={handleConfirmPayment}
-                className={`flex-2 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 shadow-xl transition ${
-                  paymentMethod === 'CASH' && isCashInsufficient
-                    ? 'bg-stone-800 text-stone-500 cursor-not-allowed'
-                    : 'bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-amber-500/20'
-                }`}
-              >
-                {isSubmitting ? (
-                  <span>正在出单核销中...</span>
-                ) : (
-                  <>
-                    <Printer className="w-4 h-4" />
-                    <span>确认已收款・打印小票并下发KDS</span>
-                  </>
-                )}
-              </button>
-            </div>
-
+            {/* 确认完成结算 */}
+            <button
+              type="button"
+              disabled={isSubmitting || (paymentMethod === 'CASH' && isCashInsufficient)}
+              onClick={handleProcessCheckout}
+              className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-stone-950 font-bold text-sm shadow-md active:scale-98 transition flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? (
+                <span>正在出票推单...</span>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>{t('completeOrder')}</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
 
-      {/* MODAL 3: Order Success & Thermal Receipt Preview Modal */}
+      {/* 结算出单成功小票预览 */}
       {completedOrderData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in zoom-in-95 duration-150">
-          <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl text-stone-100 space-y-4">
-            
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-black text-stone-100">
-                吧台收银成功・工单已下发
-              </h3>
-              <p className="text-xs text-stone-400">
-                KDS制作站台与叫号大屏已实时同步
-              </p>
-            </div>
-
-            {/* Huge Pickup Code Banner */}
-            <div className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border-2 border-amber-500/50 rounded-2xl p-4 text-center space-y-1">
-              <div className="text-xs text-amber-400 font-bold uppercase tracking-wider">
-                顾客取餐流水号 (Pickup Code)
-              </div>
-              <div className="text-4xl sm:text-5xl font-black font-mono text-amber-400 tracking-wider">
-                {completedOrderData.pickupCode}
-              </div>
-              <div className="text-[11px] text-stone-400">
-                订单号: {completedOrderData.order?.orderNo}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm bg-white text-stone-900 rounded-3xl p-6 shadow-2xl border border-stone-300 font-mono text-xs space-y-3 animate-in fade-in zoom-in-95 duration-150">
+            <div className="text-center border-b border-stone-300 pb-3">
+              <span className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-2">
+                <CheckCircle2 className="w-6 h-6" />
+              </span>
+              <h4 className="font-black text-sm tracking-wider">{currentStore.storeName}</h4>
+              <p className="text-[10px] text-stone-500 mt-0.5">吧台出餐凭证小票</p>
+              <div className="text-3xl font-black text-amber-600 mt-2 font-mono">
+                {completedOrderData.order.pickupCode}
               </div>
             </div>
 
-            {/* Receipt Preview Slip */}
-            <div className="bg-stone-950 border border-stone-800 rounded-2xl p-4 space-y-2 font-mono text-xs text-stone-300">
-              <div className="text-center font-bold text-sm text-stone-200 pb-2 border-b border-stone-800 border-dashed">
-                === 茶野集・吧台收银小票 ===
+            <div className="space-y-1 py-2 border-b border-stone-300">
+              <div className="flex justify-between">
+                <span>流水单号:</span>
+                <span>{completedOrderData.order.orderNo}</span>
               </div>
-              <div className="flex justify-between text-[11px] text-stone-400">
+              <div className="flex justify-between">
+                <span>出票时间:</span>
+                <span>{new Date(completedOrderData.order.createdAt).toLocaleTimeString()}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>支付方式:</span>
-                <span className="text-stone-200">{completedOrderData.receiptPreview?.paymentMethod || '现金支付'}</span>
+                <span>{completedOrderData.order.paymentMethod === 'POS_CARD' ? 'POS刷卡' : '现金支付'}</span>
               </div>
-              {completedOrderData.order?.cashDetails && (
+            </div>
+
+            <div className="space-y-1 py-2 border-b border-stone-300">
+              {completedOrderData.order.items.map((i: any) => (
+                <div key={i.itemId || i.id} className="flex justify-between">
+                  <span>
+                    {i.productName} x{i.quantity}
+                  </span>
+                  <span>{formatPrice(i.totalPrice)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-1 pt-1 font-bold">
+              <div className="flex justify-between text-sm">
+                <span>应收金额:</span>
+                <span className="text-amber-600">
+                  {formatPrice(completedOrderData.order.totalAmount)}
+                </span>
+              </div>
+              {completedOrderData.cashReceived > 0 && (
                 <>
-                  <div className="flex justify-between text-[11px] text-stone-400">
+                  <div className="flex justify-between text-stone-600">
                     <span>实收现金:</span>
-                    <span>¥{completedOrderData.order.cashDetails.receivedAmount}</span>
+                    <span>{formatPrice(completedOrderData.cashReceived)}</span>
                   </div>
-                  <div className="flex justify-between text-[11px] text-emerald-400 font-bold">
+                  <div className="flex justify-between text-emerald-700">
                     <span>找零金额:</span>
-                    <span>¥{completedOrderData.order.cashDetails.changeAmount}</span>
+                    <span>{formatPrice(completedOrderData.cashChange)}</span>
                   </div>
                 </>
               )}
-              <div className="pt-2 border-t border-stone-800 border-dashed space-y-1">
-                {completedOrderData.order?.items?.map((it: any, idx: number) => (
-                  <div key={idx} className="flex justify-between">
-                    <span>{it.productName} x{it.quantity}</span>
-                    <span>¥{it.totalPrice}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2 border-t border-stone-800 flex justify-between font-bold text-amber-400">
-                <span>实收总计:</span>
-                <span>¥{completedOrderData.order?.totalAmount}</span>
-              </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCompletedOrderData(null);
-                }}
-                className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-2xl shadow transition"
-              >
-                完成・继续为下一位顾客点单
-              </button>
-            </div>
-
+            <button
+              type="button"
+              onClick={() => setCompletedOrderData(null)}
+              className="w-full mt-3 py-2.5 bg-stone-900 text-white rounded-xl font-sans font-bold hover:bg-stone-800"
+            >
+              打印完成 / 继续下一单
+            </button>
           </div>
         </div>
       )}
-
     </div>
   );
 };

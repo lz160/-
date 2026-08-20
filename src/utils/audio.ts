@@ -100,7 +100,7 @@ class SoundEngine {
     }
   }
 
-  // Voice TTS Broadcast: "请 A008 号到取餐口取餐"
+  // Voice TTS Broadcast: e.g. "请 A008 号到取餐口取餐" / "Số A008, vui lòng đến quầy nhận món"
   public speak(text: string, lang = 'zh-CN') {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     try {
@@ -111,9 +111,10 @@ class SoundEngine {
       utterance.pitch = 1.05;
       utterance.volume = 1.0;
 
-      // Try selecting a good Chinese/English voice if available
+      // Select voice matching current language if available
       const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => v.lang.includes('zh') || v.lang.includes('CN'));
+      const langPrefix = lang.split('-')[0].toLowerCase();
+      const preferredVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
       if (preferredVoice) {
         utterance.voice = preferredVoice;
       }

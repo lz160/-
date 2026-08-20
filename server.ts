@@ -5,7 +5,22 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
 import { STORE_CONFIG, KDS_STATIONS, MODIFIER_GROUPS, INITIAL_PRODUCTS } from './src/data/menuData';
 import { INITIAL_CATEGORIES, INITIAL_STAFF_USERS, PERMISSION_DEFINITIONS } from './src/data/adminData';
-import { OrderMaster, OrderItem, SelectedModifier, BatchAggregationItem, QueueSummary, MenuCategory, StaffUser } from './src/types';
+import { INITIAL_MERCHANTS, INITIAL_STORES } from './src/data/merchantStoreData';
+import { INITIAL_INVENTORY_ITEMS, INITIAL_INVENTORY_LOGS } from './src/data/inventoryData';
+import { 
+  OrderMaster, 
+  OrderItem, 
+  SelectedModifier, 
+  QueueSummary, 
+  MenuCategory, 
+  StaffUser, 
+  ProductSKU, 
+  MerchantAccount, 
+  StoreEntity, 
+  InventoryItem, 
+  InventoryLog,
+  CurrencyCode
+} from './src/types';
 
 const app = express();
 const server = http.createServer(app);
@@ -13,15 +28,18 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// In-Memory Database & State Management (Persistent across sessions during runtime)
-let dailySequenceCount = 6; // Seed with a few initial orders
+// In-Memory Database & State Management
+let dailySequenceCount = 12;
 let ordersDb: OrderMaster[] = [];
 let soldOutSkuIds = new Set<string>();
-let productsDb = [...INITIAL_PRODUCTS];
+let productsDb: ProductSKU[] = [...INITIAL_PRODUCTS];
 let categoriesDb: MenuCategory[] = [...INITIAL_CATEGORIES];
 let staffUsersDb: StaffUser[] = [...INITIAL_STAFF_USERS];
+let merchantsDb: MerchantAccount[] = [...INITIAL_MERCHANTS];
+let storesDb: StoreEntity[] = [...INITIAL_STORES];
+let inventoryDb: InventoryItem[] = [...INITIAL_INVENTORY_ITEMS];
+let inventoryLogsDb: InventoryLog[] = [...INITIAL_INVENTORY_LOGS];
 let currentStoreConfig = { ...STORE_CONFIG };
-
 
 // Helper to calculate daily pickup code
 function generatePickupCode(channel: string = 'QR_H5'): string {
@@ -31,60 +49,57 @@ function generatePickupCode(channel: string = 'QR_H5'): string {
   return `${prefix}${numStr}`;
 }
 
-// Seed initial orders so KDS, Call screen and C-end have realistic active workload immediately
+// Seed initial orders across today and historical days for realistic analytics
 function initSeedOrders() {
   const now = Date.now();
-  
-  // Order A001 - COMPLETED
+  const dayMs = 86400000;
+
+  // TODAY Orders (Bratislava - EUR)
   ordersDb.push({
-    id: 'ord_seed_001',
-    storeId: STORE_CONFIG.storeId,
-    tenantId: STORE_CONFIG.tenantId,
+    id: 'ord_today_001',
+    storeId: 'store_bratislava_01',
+    merchantId: 'merchant_002',
     orderNo: 'ORD' + (now - 1200000),
     pickupCode: 'A001',
     channel: 'QR_H5',
     status: 'COMPLETED',
     paymentStatus: 'PAID',
     paymentMethod: 'STRIPE_CARD',
-    currency: '¥',
-    totalAmount: 38,
+    currency: 'EUR',
+    currencySymbol: '€',
+    totalAmount: 18.50,
     itemsCount: 2,
     items: [
       {
-        itemId: 'item_001_1',
-        orderId: 'ord_seed_001',
+        itemId: 'item_t1_1',
+        orderId: 'ord_today_001',
         skuId: 'sku_tea_01',
         productName: '幽兰幽香・生酪鲜奶茶',
         category: '招牌鲜奶茶',
         quantity: 1,
-        unitPrice: 20,
-        totalPrice: 20,
+        unitPrice: 5.50,
+        totalPrice: 5.50,
         targetStationId: 'station_bar',
         selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_70', itemName: '七分甜 (70%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '冰度/温度', itemId: 'ice_less', itemName: '少冰 (推荐)', price: 0 },
-          { groupId: 'mod_toppings', groupName: '风味加料', itemId: 'top_boba', itemName: '黑糖琥珀珍珠', price: 2 },
+          { groupId: 'mod_sweetness', groupName: '甜度', itemId: 'sweet_70', itemName: '七分甜 (70%)', price: 0 },
+          { groupId: 'mod_temperature', groupName: '温度', itemId: 'ice_less', itemName: '少冰 (推荐)', price: 0 },
         ],
         stationStatus: 'DONE',
         prepTimeSeconds: 45,
       },
       {
-        itemId: 'item_001_2',
-        orderId: 'ord_seed_001',
-        skuId: 'sku_tea_02',
-        productName: '茉莉初雪・清心白月光',
-        category: '招牌鲜奶茶',
+        itemId: 'item_t1_2',
+        orderId: 'ord_today_001',
+        skuId: 'sku_burger_01',
+        productName: '手打双层安格斯厚牛芝士堡',
+        category: '现烤手工汉堡',
         quantity: 1,
-        unitPrice: 18,
-        totalPrice: 18,
-        targetStationId: 'station_bar',
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_50', itemName: '五分甜 (50%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '冰度/温度', itemId: 'ice_none', itemName: '去冰', price: 0 },
-          { groupId: 'mod_toppings', groupName: '风味加料', itemId: 'top_jelly', itemName: '茉莉茶冻', price: 2 },
-        ],
+        unitPrice: 13.00,
+        totalPrice: 13.00,
+        targetStationId: 'station_grill',
+        selectedModifiers: [],
         stationStatus: 'DONE',
-        prepTimeSeconds: 40,
+        prepTimeSeconds: 120,
       }
     ],
     createdAt: now - 900000,
@@ -95,216 +110,279 @@ function initSeedOrders() {
     queuePosition: 0,
   });
 
-  // Order A002 - READY (Please Pickup)
   ordersDb.push({
-    id: 'ord_seed_002',
-    storeId: STORE_CONFIG.storeId,
-    tenantId: STORE_CONFIG.tenantId,
-    orderNo: 'ORD' + (now - 480000),
-    pickupCode: 'A002',
-    channel: 'QR_H5',
+    id: 'ord_today_002',
+    storeId: 'store_bratislava_01',
+    merchantId: 'merchant_002',
+    orderNo: 'POS' + (now - 600000),
+    pickupCode: 'C002',
+    channel: 'COUNTER_POS',
     status: 'READY',
     paymentStatus: 'PAID',
-    paymentMethod: 'STRIPE_APPLE_PAY',
-    currency: '¥',
-    totalAmount: 33,
+    paymentMethod: 'CASH',
+    cashDetails: { receivedAmount: 20.00, changeAmount: 6.50 },
+    currency: 'EUR',
+    currencySymbol: '€',
+    totalAmount: 13.50,
     itemsCount: 2,
     items: [
       {
-        itemId: 'item_002_1',
-        orderId: 'ord_seed_002',
+        itemId: 'item_t2_1',
+        orderId: 'ord_today_002',
         skuId: 'sku_fry_01',
         productName: '金牌黄金蒜香脆皮炸鸡 (2块)',
         category: '金牌炸鸡小食',
         quantity: 1,
-        unitPrice: 19,
-        totalPrice: 19,
+        unitPrice: 8.50,
+        totalPrice: 8.50,
         targetStationId: 'station_fryer',
-        selectedModifiers: [
-          { groupId: 'mod_spice_level', groupName: '辣度风味', itemId: 'spice_mild', itemName: '微辣 (香辣过瘾)', price: 0 }
-        ],
+        selectedModifiers: [],
         stationStatus: 'DONE',
         prepTimeSeconds: 90,
       },
       {
-        itemId: 'item_002_2',
-        orderId: 'ord_seed_002',
+        itemId: 'item_t2_2',
+        orderId: 'ord_today_002',
         skuId: 'sku_fry_02',
         productName: '黄金粗薯条配黑松露风味酱',
         category: '香酥薯条炸物',
         quantity: 1,
-        unitPrice: 14,
-        totalPrice: 14,
+        unitPrice: 5.00,
+        totalPrice: 5.00,
         targetStationId: 'station_fryer',
-        selectedModifiers: [
-          { groupId: 'mod_spice_level', groupName: '辣度风味', itemId: 'spice_none', itemName: '原味不辣 (经典椒盐)', price: 0 }
-        ],
+        selectedModifiers: [],
         stationStatus: 'DONE',
         prepTimeSeconds: 50,
       }
     ],
-    createdAt: now - 480000,
-    paidAt: now - 470000,
+    createdAt: now - 600000,
+    paidAt: now - 590000,
     readyAt: now - 60000,
-    estimatedWaitMinutes: 5,
+    estimatedWaitMinutes: 4,
     queuePosition: 0,
   });
 
-  // Order A003 - MAKING (Mixed: Bar + Grill)
   ordersDb.push({
-    id: 'ord_seed_003',
-    storeId: STORE_CONFIG.storeId,
-    tenantId: STORE_CONFIG.tenantId,
-    orderNo: 'ORD' + (now - 240000),
-    pickupCode: 'A003',
-    channel: 'QR_H5',
+    id: 'ord_today_003',
+    storeId: 'store_bratislava_01',
+    merchantId: 'merchant_002',
+    orderNo: 'POS' + (now - 200000),
+    pickupCode: 'C003',
+    channel: 'COUNTER_POS',
     status: 'MAKING',
     paymentStatus: 'PAID',
-    paymentMethod: 'STRIPE_CARD',
-    currency: '¥',
-    totalAmount: 56,
+    paymentMethod: 'POS_CARD',
+    cardDetails: { cardLast4: '4242', authCode: 'AUTH_89123' },
+    currency: 'EUR',
+    currencySymbol: '€',
+    totalAmount: 16.50,
     itemsCount: 2,
     items: [
       {
-        itemId: 'item_003_1',
-        orderId: 'ord_seed_003',
+        itemId: 'item_t3_1',
+        orderId: 'ord_today_003',
+        skuId: 'sku_tea_02',
+        productName: '茉莉初雪・清心白月光',
+        category: '招牌鲜奶茶',
+        quantity: 1,
+        unitPrice: 4.50,
+        totalPrice: 4.50,
+        targetStationId: 'station_bar',
+        selectedModifiers: [],
+        stationStatus: 'DONE',
+        prepTimeSeconds: 40,
+      },
+      {
+        itemId: 'item_t3_2',
+        orderId: 'ord_today_003',
         skuId: 'sku_burger_01',
         productName: '手打双层安格斯厚牛芝士堡',
         category: '现烤手工汉堡',
         quantity: 1,
-        unitPrice: 37,
-        totalPrice: 37,
+        unitPrice: 12.00,
+        totalPrice: 12.00,
         targetStationId: 'station_grill',
-        selectedModifiers: [
-          { groupId: 'mod_burger_addons', groupName: '汉堡增配加料', itemId: 'add_bacon', itemName: '香煎烟熏培根', price: 5 }
-        ],
+        selectedModifiers: [],
         stationStatus: 'MAKING',
         prepTimeSeconds: 120,
-        startedAt: now - 180000,
-      },
-      {
-        itemId: 'item_003_2',
-        orderId: 'ord_seed_003',
-        skuId: 'sku_tea_01',
-        productName: '幽兰幽香・生酪鲜奶茶',
-        category: '招牌鲜奶茶',
-        quantity: 1,
-        unitPrice: 19,
-        totalPrice: 19,
-        targetStationId: 'station_bar',
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_30', itemName: '微糖三分 (30%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '冰度/温度', itemId: 'ice_less', itemName: '少冰 (推荐)', price: 0 },
-        ],
-        stationStatus: 'DONE', // Bar already finished, waiting for grill
-        prepTimeSeconds: 45,
+        startedAt: now - 100000,
       }
     ],
-    createdAt: now - 240000,
-    paidAt: now - 230000,
-    estimatedWaitMinutes: 4,
+    createdAt: now - 200000,
+    paidAt: now - 190000,
+    estimatedWaitMinutes: 5,
     queuePosition: 1,
   });
 
-  // Order A004 - MAKING (Bar item)
+  // TODAY Orders (Prague - CZK)
   ordersDb.push({
-    id: 'ord_seed_004',
-    storeId: STORE_CONFIG.storeId,
-    tenantId: STORE_CONFIG.tenantId,
-    orderNo: 'ORD' + (now - 120000),
-    pickupCode: 'A004',
+    id: 'ord_prague_001',
+    storeId: 'store_prague_01',
+    merchantId: 'merchant_001',
+    orderNo: 'PRG' + (now - 1500000),
+    pickupCode: 'A010',
     channel: 'QR_H5',
-    status: 'MAKING',
+    status: 'COMPLETED',
     paymentStatus: 'PAID',
     paymentMethod: 'STRIPE_CARD',
-    currency: '¥',
-    totalAmount: 22,
-    itemsCount: 1,
+    currency: 'CZK',
+    currencySymbol: 'Kč',
+    totalAmount: 380,
+    itemsCount: 3,
     items: [
       {
-        itemId: 'item_004_1',
-        orderId: 'ord_seed_004',
-        skuId: 'sku_tea_03',
-        productName: '多肉芝士手剥多汁葡萄',
-        category: '鲜果芝士茶',
-        quantity: 1,
-        unitPrice: 22,
-        totalPrice: 22,
-        targetStationId: 'station_bar',
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_50', itemName: '五分甜 (50%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '冰度/温度', itemId: 'ice_standard', itemName: '推荐正常冰', price: 0 },
-        ],
-        stationStatus: 'MAKING',
-        prepTimeSeconds: 60,
-        startedAt: now - 90000,
-      }
-    ],
-    createdAt: now - 120000,
-    paidAt: now - 110000,
-    estimatedWaitMinutes: 6,
-    queuePosition: 2,
-  });
-
-  // Order A005 - PENDING (Just paid, waiting in line)
-  ordersDb.push({
-    id: 'ord_seed_005',
-    storeId: STORE_CONFIG.storeId,
-    tenantId: STORE_CONFIG.tenantId,
-    orderNo: 'ORD' + (now - 30000),
-    pickupCode: 'A005',
-    channel: 'QR_H5',
-    status: 'PENDING',
-    paymentStatus: 'PAID',
-    paymentMethod: 'STRIPE_CARD',
-    currency: '¥',
-    totalAmount: 38,
-    itemsCount: 2,
-    items: [
-      {
-        itemId: 'item_005_1',
-        orderId: 'ord_seed_005',
+        itemId: 'item_p1_1',
+        orderId: 'ord_prague_001',
         skuId: 'sku_tea_01',
         productName: '幽兰幽香・生酪鲜奶茶',
         category: '招牌鲜奶茶',
-        quantity: 1,
-        unitPrice: 18,
-        totalPrice: 18,
+        quantity: 2,
+        unitPrice: 130,
+        totalPrice: 260,
         targetStationId: 'station_bar',
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_70', itemName: '七分甜 (70%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '冰度/温度', itemId: 'ice_less', itemName: '少冰 (推荐)', price: 0 },
-        ],
-        stationStatus: 'PENDING',
+        selectedModifiers: [],
+        stationStatus: 'DONE',
         prepTimeSeconds: 45,
       },
       {
-        itemId: 'item_005_2',
-        orderId: 'ord_seed_005',
-        skuId: 'sku_fry_01',
-        productName: '金牌黄金蒜香脆皮炸鸡 (2块)',
-        category: '金牌炸鸡小食',
+        itemId: 'item_p1_2',
+        orderId: 'ord_prague_001',
+        skuId: 'sku_fry_02',
+        productName: '黄金粗薯条配黑松露风味酱',
+        category: '香酥薯条炸物',
         quantity: 1,
-        unitPrice: 20,
-        totalPrice: 20,
+        unitPrice: 120,
+        totalPrice: 120,
         targetStationId: 'station_fryer',
-        selectedModifiers: [
-          { groupId: 'mod_spice_level', groupName: '辣度风味', itemId: 'spice_hot', itemName: '特辣 (魔鬼双椒)', price: 1 }
-        ],
-        stationStatus: 'PENDING',
-        prepTimeSeconds: 90,
+        selectedModifiers: [],
+        stationStatus: 'DONE',
+        prepTimeSeconds: 50,
       }
     ],
-    createdAt: now - 30000,
-    paidAt: now - 20000,
-    estimatedWaitMinutes: 8,
-    queuePosition: 3,
+    createdAt: now - 1500000,
+    paidAt: now - 1490000,
+    readyAt: now - 1200000,
+    completedAt: now - 1000000,
+    estimatedWaitMinutes: 5,
+    queuePosition: 0,
+  });
+
+  // Historical Orders (Yesterday and past days)
+  const historicalDates = [1, 2, 3, 5, 7, 10, 14, 20, 25];
+  historicalDates.forEach((daysAgo, idx) => {
+    const timestamp = now - daysAgo * dayMs + (idx * 3600000);
+    
+    // Bratislava history (EUR)
+    ordersDb.push({
+      id: `ord_hist_bts_${idx}`,
+      storeId: 'store_bratislava_01',
+      merchantId: 'merchant_002',
+      orderNo: `HIST_BTS_${1000 + idx}`,
+      pickupCode: `A${(idx + 10).toString().padStart(3, '0')}`,
+      channel: idx % 2 === 0 ? 'COUNTER_POS' : 'QR_H5',
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      paymentMethod: idx % 3 === 0 ? 'CASH' : 'POS_CARD',
+      currency: 'EUR',
+      currencySymbol: '€',
+      totalAmount: 22.50 + (idx * 4.2),
+      itemsCount: 3,
+      items: [
+        {
+          itemId: `hist_item_1_${idx}`,
+          orderId: `ord_hist_bts_${idx}`,
+          skuId: 'sku_burger_01',
+          productName: '手打双层安格斯厚牛芝士堡',
+          category: '现烤手工汉堡',
+          quantity: 1,
+          unitPrice: 12.50,
+          totalPrice: 12.50,
+          targetStationId: 'station_grill',
+          selectedModifiers: [],
+          stationStatus: 'DONE',
+          prepTimeSeconds: 120,
+        },
+        {
+          itemId: `hist_item_2_${idx}`,
+          orderId: `ord_hist_bts_${idx}`,
+          skuId: 'sku_tea_01',
+          productName: '幽兰幽香・生酪鲜奶茶',
+          category: '招牌鲜奶茶',
+          quantity: 2,
+          unitPrice: 5.00,
+          totalPrice: 10.00,
+          targetStationId: 'station_bar',
+          selectedModifiers: [],
+          stationStatus: 'DONE',
+          prepTimeSeconds: 45,
+        }
+      ],
+      createdAt: timestamp,
+      paidAt: timestamp + 60000,
+      readyAt: timestamp + 400000,
+      completedAt: timestamp + 600000,
+      estimatedWaitMinutes: 5,
+      queuePosition: 0,
+    });
+
+    // Prague history (CZK)
+    ordersDb.push({
+      id: `ord_hist_prg_${idx}`,
+      storeId: 'store_prague_01',
+      merchantId: 'merchant_001',
+      orderNo: `HIST_PRG_${2000 + idx}`,
+      pickupCode: `C${(idx + 20).toString().padStart(3, '0')}`,
+      channel: 'COUNTER_POS',
+      status: 'COMPLETED',
+      paymentStatus: 'PAID',
+      paymentMethod: idx % 2 === 0 ? 'CASH' : 'POS_CARD',
+      currency: 'CZK',
+      currencySymbol: 'Kč',
+      totalAmount: 480 + (idx * 60),
+      itemsCount: 4,
+      items: [
+        {
+          itemId: `hist_prg_1_${idx}`,
+          orderId: `ord_hist_prg_${idx}`,
+          skuId: 'sku_fry_01',
+          productName: '金牌黄金蒜香脆皮炸鸡 (2块)',
+          category: '金牌炸鸡小食',
+          quantity: 2,
+          unitPrice: 160,
+          totalPrice: 320,
+          targetStationId: 'station_fryer',
+          selectedModifiers: [],
+          stationStatus: 'DONE',
+          prepTimeSeconds: 90,
+        },
+        {
+          itemId: `hist_prg_2_${idx}`,
+          orderId: `ord_hist_prg_${idx}`,
+          skuId: 'sku_tea_03',
+          productName: '多肉芝士手剥多汁葡萄',
+          category: '鲜果芝士茶',
+          quantity: 1,
+          unitPrice: 160,
+          totalPrice: 160,
+          targetStationId: 'station_bar',
+          selectedModifiers: [],
+          stationStatus: 'DONE',
+          prepTimeSeconds: 60,
+        }
+      ],
+      createdAt: timestamp - 3600000,
+      paidAt: timestamp - 3540000,
+      readyAt: timestamp - 3200000,
+      completedAt: timestamp - 3000000,
+      estimatedWaitMinutes: 6,
+      queuePosition: 0,
+    });
   });
 }
 
 initSeedOrders();
 
-// WebSocket Server Initialization
+// WebSocket Server
 const wss = new WebSocketServer({ server });
 
 function broadcastWSEvent(type: string, payload: any) {
@@ -326,7 +404,6 @@ function broadcastWSEvent(type: string, payload: any) {
 }
 
 wss.on('connection', (ws) => {
-  // Send current queue state immediately upon connection
   const summary = calculateQueueSummary();
   ws.send(JSON.stringify({
     type: 'QUEUE_UPDATE',
@@ -335,7 +412,6 @@ wss.on('connection', (ws) => {
   }));
 });
 
-// Helper for Queue stats
 function calculateQueueSummary(): QueueSummary {
   const activeOrders = ordersDb.filter(o => o.status === 'PENDING' || o.status === 'MAKING');
   const readyOrders = ordersDb.filter(o => o.status === 'READY');
@@ -371,7 +447,6 @@ app.get('/api/menu', (req, res) => {
     isSoldOut: soldOutSkuIds.has(p.id)
   }));
 
-  // Recalculate category product counts
   const categoriesWithCounts = categoriesDb.map(c => ({
     ...c,
     productCount: productsDb.filter(p => p.category === c.name).length
@@ -387,7 +462,533 @@ app.get('/api/menu', (req, res) => {
   });
 });
 
-// SaaS Admin Endpoints: Categories Management
+// -------------------------------------------------------------
+// SaaS Vendor: Merchant Management Endpoints
+// -------------------------------------------------------------
+app.get('/api/admin/merchants', (req, res) => {
+  // Calculate dynamic revenue for merchants based on their assigned stores
+  const merchantsWithStats = merchantsDb.map(m => {
+    const assignedStores = storesDb.filter(s => m.assignedStoreIds.includes(s.id));
+    const storeOrders = ordersDb.filter(o => m.assignedStoreIds.includes(o.storeId) && o.paymentStatus === 'PAID');
+    const totalRev = storeOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    return {
+      ...m,
+      assignedStoresCount: m.assignedStoreIds.length,
+      assignedStoresList: assignedStores,
+      totalOrdersCount: storeOrders.length,
+      calculatedRevenue: totalRev,
+    };
+  });
+  res.json({ merchants: merchantsWithStats });
+});
+
+app.post('/api/admin/merchants', (req, res) => {
+  try {
+    const { name, contactPerson, email, phone, plan = 'STANDARD', notes = '', customDomain = '', assignedStoreIds = [] } = req.body;
+    if (!name || !contactPerson || !email) {
+      return res.status(400).json({ error: 'Name, contact person and email are required' });
+    }
+
+    const newMerchant: MerchantAccount = {
+      id: `merchant_${Date.now()}`,
+      name: name.trim(),
+      contactPerson: contactPerson.trim(),
+      email: email.trim(),
+      phone: phone ? phone.trim() : '',
+      status: 'ACTIVE',
+      assignedStoreIds: Array.isArray(assignedStoreIds) ? assignedStoreIds : [],
+      plan,
+      customDomain: (customDomain || '').trim(),
+      createdAt: Date.now(),
+      notes,
+      totalRevenue: 0,
+    };
+
+    merchantsDb.unshift(newMerchant);
+
+    // Update stores assigned to this merchant
+    if (newMerchant.assignedStoreIds.length > 0) {
+      storesDb.forEach(s => {
+        if (newMerchant.assignedStoreIds.includes(s.id)) {
+          s.merchantId = newMerchant.id;
+          s.merchantName = newMerchant.name;
+        }
+      });
+    }
+
+    broadcastWSEvent('MERCHANTS_UPDATED', { merchants: merchantsDb });
+    res.json({ success: true, merchant: newMerchant, merchants: merchantsDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/merchants/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const merchant = merchantsDb.find(m => m.id === id);
+    if (!merchant) return res.status(404).json({ error: 'Merchant not found' });
+
+    const { name, contactPerson, email, phone, status, plan, notes, customDomain, assignedStoreIds } = req.body;
+    if (name !== undefined) merchant.name = name.trim();
+    if (contactPerson !== undefined) merchant.contactPerson = contactPerson.trim();
+    if (email !== undefined) merchant.email = email.trim();
+    if (phone !== undefined) merchant.phone = phone.trim();
+    if (status !== undefined) merchant.status = status;
+    if (plan !== undefined) merchant.plan = plan;
+    if (notes !== undefined) merchant.notes = notes;
+    if (customDomain !== undefined) merchant.customDomain = customDomain.trim();
+
+    if (assignedStoreIds !== undefined && Array.isArray(assignedStoreIds)) {
+      merchant.assignedStoreIds = assignedStoreIds;
+      // Sync store links
+      storesDb.forEach(s => {
+        if (assignedStoreIds.includes(s.id)) {
+          s.merchantId = merchant.id;
+          s.merchantName = merchant.name;
+        } else if (s.merchantId === merchant.id) {
+          // Unassigned
+          s.merchantId = '';
+          s.merchantName = '未分配商家';
+        }
+      });
+    }
+
+    broadcastWSEvent('MERCHANTS_UPDATED', { merchants: merchantsDb });
+    res.json({ success: true, merchant, merchants: merchantsDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/merchants/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const idx = merchantsDb.findIndex(m => m.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Merchant not found' });
+
+    const [deleted] = merchantsDb.splice(idx, 1);
+    // Unlink stores
+    storesDb.forEach(s => {
+      if (s.merchantId === id) {
+        s.merchantId = '';
+        s.merchantName = '未分配商家';
+      }
+    });
+
+    broadcastWSEvent('MERCHANTS_UPDATED', { merchants: merchantsDb });
+    res.json({ success: true, deleted, merchants: merchantsDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// SaaS Vendor: Store Management & Allocation Endpoints
+// -------------------------------------------------------------
+app.get('/api/admin/stores', (req, res) => {
+  const storesWithStats = storesDb.map(s => {
+    const merchant = merchantsDb.find(m => m.id === s.merchantId);
+    const storeOrders = ordersDb.filter(o => o.storeId === s.id && o.paymentStatus === 'PAID');
+    const totalRev = storeOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    return {
+      ...s,
+      merchantName: merchant ? merchant.name : (s.merchantName || '未分配商家'),
+      totalOrdersCount: storeOrders.length,
+      totalRevenue: totalRev,
+    };
+  });
+  res.json({ stores: storesWithStats });
+});
+
+app.post('/api/admin/stores', (req, res) => {
+  try {
+    const { storeName, currency = 'EUR', address = '', phone = '', operatingHours = '09:00 - 22:30', merchantId = '', customDomain = '' } = req.body;
+    if (!storeName || !storeName.trim()) {
+      return res.status(400).json({ error: 'Store name is required' });
+    }
+
+    const currencySymbols: Record<CurrencyCode, string> = {
+      EUR: '€',
+      CZK: 'Kč',
+      HUF: 'Ft',
+      PLN: 'zł',
+    };
+
+    const assignedMerchant = merchantsDb.find(m => m.id === merchantId);
+
+    const newStore: StoreEntity = {
+      id: `store_${Date.now()}`,
+      merchantId: merchantId || '',
+      merchantName: assignedMerchant ? assignedMerchant.name : '未分配商家',
+      storeName: storeName.trim(),
+      currency: currency as CurrencyCode,
+      currencySymbol: currencySymbols[currency as CurrencyCode] || '€',
+      address: address.trim(),
+      phone: phone.trim(),
+      operatingHours: operatingHours.trim(),
+      status: 'OPEN',
+      customDomain: (customDomain || '').trim(),
+      createdAt: Date.now(),
+    };
+
+    storesDb.push(newStore);
+
+    if (assignedMerchant && !assignedMerchant.assignedStoreIds.includes(newStore.id)) {
+      assignedMerchant.assignedStoreIds.push(newStore.id);
+    }
+
+    broadcastWSEvent('STORES_UPDATED', { stores: storesDb });
+    res.json({ success: true, store: newStore, stores: storesDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/stores/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const store = storesDb.find(s => s.id === id);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    const { storeName, currency, address, phone, operatingHours, status, merchantId, customDomain } = req.body;
+    if (storeName !== undefined) store.storeName = storeName.trim();
+    if (currency !== undefined) {
+      store.currency = currency;
+      store.currencySymbol = currency === 'CZK' ? 'Kč' : currency === 'HUF' ? 'Ft' : currency === 'PLN' ? 'zł' : '€';
+    }
+    if (address !== undefined) store.address = address.trim();
+    if (phone !== undefined) store.phone = phone.trim();
+    if (operatingHours !== undefined) store.operatingHours = operatingHours.trim();
+    if (status !== undefined) store.status = status;
+    if (customDomain !== undefined) store.customDomain = customDomain.trim();
+
+    if (merchantId !== undefined && merchantId !== store.merchantId) {
+      // Remove from old merchant
+      const oldMerchant = merchantsDb.find(m => m.id === store.merchantId);
+      if (oldMerchant) {
+        oldMerchant.assignedStoreIds = oldMerchant.assignedStoreIds.filter(sid => sid !== store.id);
+      }
+      // Add to new merchant
+      store.merchantId = merchantId;
+      const newMerchant = merchantsDb.find(m => m.id === merchantId);
+      if (newMerchant) {
+        store.merchantName = newMerchant.name;
+        if (!newMerchant.assignedStoreIds.includes(store.id)) {
+          newMerchant.assignedStoreIds.push(store.id);
+        }
+      } else {
+        store.merchantName = '未分配商家';
+      }
+    }
+
+    broadcastWSEvent('STORES_UPDATED', { stores: storesDb });
+    res.json({ success: true, store, stores: storesDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Domain Routing / Tenant Resolution by Domain / Hostname
+app.get('/api/tenant/resolve', (req, res) => {
+  const host = (req.query.host as string) || req.headers.host || '';
+  const cleanHost = host.split(':')[0].toLowerCase().trim();
+
+  // 1. Check if matches a store custom domain directly
+  const matchedStore = storesDb.find(
+    s => s.customDomain && s.customDomain.toLowerCase() === cleanHost
+  );
+  if (matchedStore) {
+    const merchant = merchantsDb.find(m => m.id === matchedStore.merchantId);
+    return res.json({
+      matched: true,
+      type: 'STORE',
+      store: matchedStore,
+      merchant: merchant || null,
+      host: cleanHost,
+    });
+  }
+
+  // 2. Check if matches a merchant custom domain
+  const matchedMerchant = merchantsDb.find(
+    m => m.customDomain && m.customDomain.toLowerCase() === cleanHost
+  );
+  if (matchedMerchant) {
+    const merchantStores = storesDb.filter(s => matchedMerchant.assignedStoreIds.includes(s.id));
+    return res.json({
+      matched: true,
+      type: 'MERCHANT',
+      merchant: matchedMerchant,
+      stores: merchantStores,
+      defaultStore: merchantStores[0] || null,
+      host: cleanHost,
+    });
+  }
+
+  // 3. Fallback default
+  res.json({
+    matched: false,
+    type: 'DEFAULT',
+    defaultStore: storesDb[0] || null,
+    host: cleanHost,
+  });
+});
+
+app.post('/api/admin/stores/:id/assign', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { merchantId } = req.body;
+    const store = storesDb.find(s => s.id === id);
+    if (!store) return res.status(404).json({ error: 'Store not found' });
+
+    // Remove from old
+    if (store.merchantId) {
+      const oldMerchant = merchantsDb.find(m => m.id === store.merchantId);
+      if (oldMerchant) {
+        oldMerchant.assignedStoreIds = oldMerchant.assignedStoreIds.filter(sid => sid !== store.id);
+      }
+    }
+
+    store.merchantId = merchantId || '';
+    const newMerchant = merchantsDb.find(m => m.id === merchantId);
+    if (newMerchant) {
+      store.merchantName = newMerchant.name;
+      if (!newMerchant.assignedStoreIds.includes(store.id)) {
+        newMerchant.assignedStoreIds.push(store.id);
+      }
+    } else {
+      store.merchantName = '未分配商家';
+    }
+
+    broadcastWSEvent('STORES_UPDATED', { stores: storesDb });
+    broadcastWSEvent('MERCHANTS_UPDATED', { merchants: merchantsDb });
+    res.json({ success: true, store, stores: storesDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/stores/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const storeIdx = storesDb.findIndex(s => s.id === id);
+    if (storeIdx === -1) return res.status(404).json({ error: 'Store not found' });
+
+    const [deleted] = storesDb.splice(storeIdx, 1);
+    // Unassign from merchant
+    if (deleted.merchantId) {
+      const merchant = merchantsDb.find(m => m.id === deleted.merchantId);
+      if (merchant) {
+        merchant.assignedStoreIds = merchant.assignedStoreIds.filter(sid => sid !== id);
+      }
+    }
+
+    broadcastWSEvent('STORES_UPDATED', { stores: storesDb });
+    broadcastWSEvent('MERCHANTS_UPDATED', { merchants: merchantsDb });
+    res.json({ success: true, deleted, stores: storesDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Store Manager: Ingredient Raw Material Inventory Endpoints
+// -------------------------------------------------------------
+app.get('/api/admin/inventory', (req, res) => {
+  const { storeId } = req.query;
+  let items = [...inventoryDb];
+  if (storeId) {
+    items = items.filter(i => i.storeId === storeId);
+  }
+  res.json({ inventory: items, logs: inventoryLogsDb.slice(0, 50) });
+});
+
+app.post('/api/admin/inventory/adjust', (req, res) => {
+  try {
+    const { itemId, type, delta = 0, targetBalance, operator = '店长', notes = '' } = req.body;
+    const item = inventoryDb.find(i => i.id === itemId);
+    if (!item) return res.status(404).json({ error: 'Inventory item not found' });
+
+    const numDelta = Number(delta);
+    let oldBalance = item.currentStock;
+    let newBalance = oldBalance;
+
+    if (type === 'RESTOCK') {
+      newBalance = oldBalance + Math.abs(numDelta);
+    } else if (type === 'CONSUME' || type === 'WASTE') {
+      newBalance = Math.max(0, oldBalance - Math.abs(numDelta));
+    } else if (type === 'CALIBRATE' && targetBalance !== undefined) {
+      newBalance = Number(targetBalance);
+    }
+
+    item.currentStock = Number(newBalance.toFixed(2));
+    item.lastUpdated = Date.now();
+
+    // Recalculate status
+    if (item.currentStock <= item.minThreshold * 0.5) {
+      item.status = 'CRITICAL';
+    } else if (item.currentStock <= item.minThreshold) {
+      item.status = 'LOW';
+    } else {
+      item.status = 'SUFFICIENT';
+    }
+
+    const log: InventoryLog = {
+      id: `log_${Date.now()}`,
+      storeId: item.storeId,
+      itemId: item.id,
+      itemName: item.name,
+      type,
+      quantityDelta: Number((newBalance - oldBalance).toFixed(2)),
+      balance: item.currentStock,
+      operator,
+      timestamp: Date.now(),
+      notes,
+    };
+
+    inventoryLogsDb.unshift(log);
+
+    broadcastWSEvent('INVENTORY_UPDATED', { inventory: inventoryDb, latestLog: log });
+    res.json({ success: true, item, log, inventory: inventoryDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/inventory/create', (req, res) => {
+  try {
+    const { storeId = 'store_bratislava_01', name, category = 'TEA', categoryName = '茶底原叶', currentStock = 10, unit = 'kg', minThreshold = 5, costPerUnit = 20 } = req.body;
+    if (!name) return res.status(400).json({ error: 'Item name is required' });
+
+    const newItem: InventoryItem = {
+      id: `inv_${Date.now()}`,
+      storeId,
+      name: name.trim(),
+      category,
+      categoryName,
+      currentStock: Number(currentStock),
+      unit,
+      minThreshold: Number(minThreshold),
+      costPerUnit: Number(costPerUnit),
+      lastUpdated: Date.now(),
+      status: Number(currentStock) <= Number(minThreshold) ? 'LOW' : 'SUFFICIENT',
+    };
+
+    inventoryDb.unshift(newItem);
+    broadcastWSEvent('INVENTORY_UPDATED', { inventory: inventoryDb });
+    res.json({ success: true, item: newItem, inventory: inventoryDb });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Merchant & Store Manager: Multi-dimension Analytics API
+// -------------------------------------------------------------
+app.get('/api/admin/analytics/sales', (req, res) => {
+  const { storeId, timeRange = 'all', startDate, endDate, category } = req.query;
+  const now = Date.now();
+  const dayMs = 86400000;
+
+  let filteredOrders = ordersDb.filter(o => o.paymentStatus === 'PAID');
+
+  // Filter by store
+  if (storeId && storeId !== 'ALL') {
+    filteredOrders = filteredOrders.filter(o => o.storeId === storeId);
+  }
+
+  // Filter by time range
+  if (timeRange === 'today') {
+    const startOfToday = new Date().setHours(0, 0, 0, 0);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfToday);
+  } else if (timeRange === 'yesterday') {
+    const startOfYesterday = new Date().setHours(0, 0, 0, 0) - dayMs;
+    const endOfYesterday = startOfYesterday + dayMs;
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfYesterday && o.createdAt < endOfYesterday);
+  } else if (timeRange === 'last7') {
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= now - 7 * dayMs);
+  } else if (timeRange === 'last30') {
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= now - 30 * dayMs);
+  } else if (startDate && endDate) {
+    const start = new Date(startDate as string).getTime();
+    const end = new Date(endDate as string).getTime() + dayMs;
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= start && o.createdAt <= end);
+  }
+
+  // Aggregate Metrics
+  let totalRevenue = 0;
+  let cashIncome = 0;
+  let cardIncome = 0;
+  let totalItemsSold = 0;
+
+  const productSalesMap: Record<string, {
+    skuId: string;
+    productName: string;
+    category: string;
+    volume: number;
+    revenue: number;
+  }> = {};
+
+  // Hourly stats for today
+  const hourlyOrders: Record<number, { hour: string; count: number; revenue: number }> = {};
+  for (let h = 8; h <= 23; h++) {
+    hourlyOrders[h] = { hour: `${h.toString().padStart(2, '0')}:00`, count: 0, revenue: 0 };
+  }
+
+  filteredOrders.forEach(ord => {
+    totalRevenue += ord.totalAmount;
+    if (ord.paymentMethod === 'CASH') {
+      cashIncome += ord.totalAmount;
+    } else {
+      cardIncome += ord.totalAmount;
+    }
+
+    const orderHour = new Date(ord.createdAt).getHours();
+    if (hourlyOrders[orderHour]) {
+      hourlyOrders[orderHour].count += 1;
+      hourlyOrders[orderHour].revenue += ord.totalAmount;
+    }
+
+    ord.items.forEach(item => {
+      totalItemsSold += item.quantity;
+      if (!productSalesMap[item.skuId]) {
+        productSalesMap[item.skuId] = {
+          skuId: item.skuId,
+          productName: item.productName,
+          category: item.category,
+          volume: 0,
+          revenue: 0,
+        };
+      }
+      productSalesMap[item.skuId].volume += item.quantity;
+      productSalesMap[item.skuId].revenue += item.totalPrice;
+    });
+  });
+
+  let productRankings = Object.values(productSalesMap);
+  if (category && category !== 'ALL') {
+    productRankings = productRankings.filter(p => p.category === category);
+  }
+
+  productRankings.sort((a, b) => b.volume - a.volume);
+
+  const avgOrderValue = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
+
+  res.json({
+    metrics: {
+      totalRevenue: Number(totalRevenue.toFixed(2)),
+      totalOrders: filteredOrders.length,
+      avgOrderValue: Number(avgOrderValue.toFixed(2)),
+      cashIncome: Number(cashIncome.toFixed(2)),
+      cardIncome: Number(cardIncome.toFixed(2)),
+      totalItemsSold,
+    },
+    hourlyTrend: Object.values(hourlyOrders),
+    productRankings,
+  });
+});
+
+// Categories Management
 app.get('/api/admin/categories', (req, res) => {
   const categoriesWithCounts = categoriesDb.map(c => ({
     ...c,
@@ -433,7 +1034,6 @@ app.put('/api/admin/categories/:id', (req, res) => {
     if (sortOrder !== undefined) cat.sortOrder = Number(sortOrder);
     if (isActive !== undefined) cat.isActive = Boolean(isActive);
 
-    // If category name changed, update corresponding products
     if (name && name.trim() !== oldName) {
       productsDb.forEach(p => {
         if (p.category === oldName) {
@@ -465,30 +1065,33 @@ app.delete('/api/admin/categories/:id', (req, res) => {
   }
 });
 
-// SaaS Admin Endpoints: Products CRUD
+// Products Management
+app.get('/api/admin/products', (req, res) => {
+  res.json({ products: productsDb });
+});
+
 app.post('/api/admin/products', (req, res) => {
   try {
-    const { name, category, basePrice, targetStationId = 'station_bar', prepTimeSeconds = 45, image, description, isRecommended = false } = req.body;
+    const { name, category, basePrice, targetStationId = 'station_bar', prepTimeSeconds = 60, image, description, isRecommended = false } = req.body;
     if (!name || !category || basePrice === undefined) {
-      return res.status(400).json({ error: 'Name, category and basePrice are required' });
+      return res.status(400).json({ error: 'Name, category, and basePrice are required' });
     }
 
-    const newSku: ProductSKU = {
+    const newProduct: ProductSKU = {
       id: `sku_${Date.now()}_${Math.random().toString(36).substring(7)}`,
       name: name.trim(),
       category: category.trim(),
       basePrice: Number(basePrice),
       targetStationId,
-      prepTimeSeconds: Number(prepTimeSeconds) || 45,
+      prepTimeSeconds: Number(prepTimeSeconds),
       image: image || 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=500&auto=format&fit=crop&q=80',
       description: description || '',
       isRecommended: Boolean(isRecommended),
-      applicableModifierGroupIds: targetStationId === 'station_bar' ? ['mod_cup_size', 'mod_sweetness', 'mod_temperature', 'mod_toppings'] : targetStationId === 'station_grill' ? ['mod_burger_addons'] : [],
     };
 
-    productsDb.unshift(newSku);
+    productsDb.unshift(newProduct);
     broadcastWSEvent('MENU_UPDATED', { products: productsDb });
-    res.json({ success: true, product: newSku, products: productsDb });
+    res.json({ success: true, product: newProduct, products: productsDb });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -531,7 +1134,7 @@ app.delete('/api/admin/products/:id', (req, res) => {
   }
 });
 
-// SaaS Admin Endpoints: Staff & Permissions RBAC
+// Staff Management
 app.get('/api/admin/staff', (req, res) => {
   res.json({
     staff: staffUsersDb,
@@ -553,7 +1156,7 @@ app.post('/api/admin/staff', (req, res) => {
       storeId: currentStoreConfig.storeId,
       status: 'ACTIVE',
       pinCode: pinCode || '1234',
-      avatar: `https://images.unsplash.com/photo-${Math.random() > 0.5 ? '1534528741775-53994a69daeb' : '1507003211169-0a1dd7228f2d'}?w=100&auto=format&fit=crop&q=80`,
+      avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80`,
       permissions,
     };
     staffUsersDb.push(newStaff);
@@ -596,12 +1199,10 @@ app.delete('/api/admin/staff/:id', (req, res) => {
   }
 });
 
-
-// 2. Client H5 Pre-Order / Checkout Intent
+// H5 Pre-Order
 app.post('/api/order/create', (req, res) => {
   try {
     const { items, customerPhone, notes, channel = 'QR_H5' } = req.body;
-
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Order must contain at least 1 item' });
     }
@@ -612,9 +1213,7 @@ app.post('/api/order/create', (req, res) => {
     const orderItems: OrderItem[] = [];
 
     items.forEach((cartItem: any, idx: number) => {
-      const sku = INITIAL_PRODUCTS.find(p => p.id === cartItem.skuId);
-      if (!sku) throw new Error(`SKU not found: ${cartItem.skuId}`);
-
+      const sku = productsDb.find(p => p.id === (cartItem.skuId || cartItem.sku?.id)) || INITIAL_PRODUCTS[0];
       let itemUnitPrice = sku.basePrice;
       const selectedModifiers: SelectedModifier[] = [];
 
@@ -637,7 +1236,7 @@ app.post('/api/order/create', (req, res) => {
 
       orderItems.push({
         itemId: `item_${now}_${idx}`,
-        orderId: '', // populated below
+        orderId: '',
         skuId: sku.id,
         productName: sku.name,
         category: sku.category,
@@ -657,16 +1256,17 @@ app.post('/api/order/create', (req, res) => {
 
     const newOrder: OrderMaster = {
       id: orderId,
-      storeId: STORE_CONFIG.storeId,
-      tenantId: STORE_CONFIG.tenantId,
+      storeId: 'store_bratislava_01',
+      merchantId: 'merchant_002',
       orderNo: 'ORD' + now,
-      pickupCode: '', // Generated upon successful payment callback!
+      pickupCode: '',
       channel,
       status: 'UNPAID',
       paymentStatus: 'PENDING',
       paymentMethod: 'STRIPE_CARD',
       stripePaymentIntentId: `pi_mock_${now}_${Math.random().toString(36).substring(7)}`,
-      currency: '¥',
+      currency: 'EUR',
+      currencySymbol: '€',
       totalAmount: calculatedTotal,
       itemsCount: totalItemsCount,
       items: orderItems,
@@ -690,15 +1290,13 @@ app.post('/api/order/create', (req, res) => {
   }
 });
 
-// 3. Simulated Stripe Webhook (Instant Payment Confirmation & KDS Task Routing)
+// Stripe Webhook Simulator
 app.post('/api/webhook/stripe', (req, res) => {
   try {
-    const { orderId, eventType = 'payment_intent.succeeded', paymentMethod = 'STRIPE_CARD' } = req.body;
+    const { orderId, paymentMethod = 'STRIPE_CARD' } = req.body;
     const order = ordersDb.find(o => o.id === orderId);
 
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found for webhook' });
-    }
+    if (!order) return res.status(404).json({ error: 'Order not found for webhook' });
 
     if (order.status !== 'UNPAID' && order.paymentStatus === 'PAID') {
       return res.json({ message: 'Order already paid and routed', order });
@@ -713,28 +1311,15 @@ app.post('/api/webhook/stripe', (req, res) => {
     order.paidAt = now;
     order.paymentMethod = paymentMethod;
 
-    // Split tasks for KDS
     order.items.forEach(item => {
       item.stationStatus = 'PENDING';
     });
 
     const queueSummary = calculateQueueSummary();
 
-    // Broadcast Realtime Events
     broadcastWSEvent('PAYMENT_CONFIRMED', {
       order,
       pickupCode,
-      cloudPrintJob: {
-        printerId: 'PRINTER_CLOUD_BAR_01',
-        title: `【茶野集】取餐码: ${pickupCode}`,
-        items: order.items.map(it => ({
-          name: it.productName,
-          spec: it.selectedModifiers.map(m => m.itemName).join(' / '),
-          quantity: it.quantity,
-          station: it.targetStationId,
-        })),
-        createdAt: new Date(now).toLocaleTimeString(),
-      },
       queue: queueSummary,
     });
 
@@ -750,14 +1335,16 @@ app.post('/api/webhook/stripe', (req, res) => {
   }
 });
 
-// 3.1 Counter Assisted POS Ordering & Direct Payment Settlement (Cash, POS Card, or Counter QR)
+// Counter POS Checkout (Only CASH & POS_CARD supported, QR aggregated payments removed)
 app.post('/api/counter/order/create-and-pay', (req, res) => {
   try {
-    const { items, paymentMethod = 'CASH', cashDetails, cardDetails, customerPhone, notes } = req.body;
+    const { items, paymentMethod = 'CASH', cashDetails, cardDetails, customerPhone, notes, storeId = 'store_bratislava_01' } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Order must contain at least 1 item' });
     }
+
+    const targetStore = storesDb.find(s => s.id === storeId) || storesDb[0];
 
     const now = Date.now();
     let calculatedTotal = 0;
@@ -765,9 +1352,7 @@ app.post('/api/counter/order/create-and-pay', (req, res) => {
     const orderItems: OrderItem[] = [];
 
     items.forEach((cartItem: any, idx: number) => {
-      const sku = INITIAL_PRODUCTS.find(p => p.id === (cartItem.skuId || cartItem.sku?.id));
-      if (!sku) throw new Error(`SKU not found: ${cartItem.skuId || cartItem.sku?.id}`);
-
+      const sku = productsDb.find(p => p.id === (cartItem.skuId || cartItem.sku?.id)) || INITIAL_PRODUCTS[0];
       let itemUnitPrice = sku.basePrice;
       const selectedModifiers: SelectedModifier[] = [];
 
@@ -790,7 +1375,7 @@ app.post('/api/counter/order/create-and-pay', (req, res) => {
 
       orderItems.push({
         itemId: `item_${now}_pos_${idx}`,
-        orderId: '', // set below
+        orderId: '',
         skuId: sku.id,
         productName: sku.name,
         category: sku.category,
@@ -812,18 +1397,19 @@ app.post('/api/counter/order/create-and-pay', (req, res) => {
 
     const newOrder: OrderMaster = {
       id: orderId,
-      storeId: STORE_CONFIG.storeId,
-      tenantId: STORE_CONFIG.tenantId,
+      storeId: targetStore.id,
+      merchantId: targetStore.merchantId,
       orderNo: 'POS' + now,
       pickupCode,
       channel: 'COUNTER_POS',
       status: 'PENDING',
       paymentStatus: 'PAID',
-      paymentMethod,
+      paymentMethod: paymentMethod === 'POS_CARD' ? 'POS_CARD' : 'CASH',
       cashDetails: cashDetails || (paymentMethod === 'CASH' ? { receivedAmount: calculatedTotal, changeAmount: 0 } : undefined),
       cardDetails: cardDetails || (paymentMethod === 'POS_CARD' ? { cardLast4: '8899', authCode: `AUTH_${Math.floor(100000 + Math.random() * 900000)}` } : undefined),
-      currency: '¥',
-      totalAmount: calculatedTotal,
+      currency: targetStore.currency,
+      currencySymbol: targetStore.currencySymbol,
+      totalAmount: Number(calculatedTotal.toFixed(2)),
       itemsCount: totalItemsCount,
       items: orderItems,
       customerPhoneMasked: customerPhone ? customerPhone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : undefined,
@@ -838,27 +1424,9 @@ app.post('/api/counter/order/create-and-pay', (req, res) => {
 
     const queueSummary = calculateQueueSummary();
 
-    // Broadcast Realtime Event to KDS Stations, Call Screens, and Cloud Printers
     broadcastWSEvent('PAYMENT_CONFIRMED', {
       order: newOrder,
       pickupCode,
-      cloudPrintJob: {
-        printerId: 'PRINTER_COUNTER_POS_01',
-        title: `【吧台收银】取餐码: ${pickupCode}`,
-        items: newOrder.items.map(it => ({
-          name: it.productName,
-          spec: it.selectedModifiers.map(m => m.itemName).join(' / '),
-          quantity: it.quantity,
-          station: it.targetStationId,
-        })),
-        payment: {
-          method: paymentMethod,
-          total: calculatedTotal,
-          cashReceived: cashDetails?.receivedAmount,
-          cashChange: cashDetails?.changeAmount,
-        },
-        createdAt: new Date(now).toLocaleTimeString(),
-      },
       queue: queueSummary,
     });
 
@@ -867,36 +1435,20 @@ app.post('/api/counter/order/create-and-pay', (req, res) => {
       order: newOrder,
       pickupCode,
       queue: queueSummary,
-      receiptPreview: {
-        storeName: STORE_CONFIG.storeName,
-        orderNo: newOrder.orderNo,
-        pickupCode,
-        channel: '吧台现场收银',
-        cashier: '01号收银员 (吧台总控)',
-        paymentMethod: paymentMethod === 'CASH' ? '现金支付' : paymentMethod === 'POS_CARD' ? 'POS刷卡支付' : paymentMethod === 'COUNTER_WECHAT' ? '微信扫码' : '支付宝扫码',
-        totalAmount: calculatedTotal,
-        cashDetails: newOrder.cashDetails,
-        cardDetails: newOrder.cardDetails,
-        time: new Date(now).toLocaleString(),
-        items: newOrder.items.map(it => ({
-          name: it.productName,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          totalPrice: it.totalPrice,
-          modifiers: it.selectedModifiers.map(m => m.itemName).join(', ')
-        }))
-      }
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Counter order creation failed' });
   }
 });
 
-// 4. Get Orders List (for C-End Tracking or B-End History)
+// Orders List & Query
 app.get('/api/orders', (req, res) => {
-  const { status, pickupCode, limit = 50 } = req.query;
+  const { status, pickupCode, storeId, limit = 100 } = req.query;
   let filtered = [...ordersDb];
 
+  if (storeId && storeId !== 'ALL') {
+    filtered = filtered.filter(o => o.storeId === storeId);
+  }
   if (status) {
     filtered = filtered.filter(o => o.status === status);
   }
@@ -911,12 +1463,10 @@ app.get('/api/orders', (req, res) => {
   });
 });
 
-// 5. Get Specific Order (C-End Live Status Tracking)
 app.get('/api/order/:id', (req, res) => {
   const order = ordersDb.find(o => o.id === req.params.id || o.pickupCode === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
   
-  // Calculate dynamic queue position
   const activeOrders = ordersDb.filter(o => o.status === 'PENDING' || o.status === 'MAKING');
   const orderIndex = activeOrders.findIndex(o => o.id === order.id);
   const queuePos = orderIndex >= 0 ? orderIndex + 1 : 0;
@@ -930,228 +1480,199 @@ app.get('/api/order/:id', (req, res) => {
   });
 });
 
-// 6. KDS Station Tasks Query (Includes Batch Aggregation)
+// KDS Tasks & Operations
 app.get('/api/kds/station/:stationId/tasks', (req, res) => {
   const { stationId } = req.params;
   const isExpo = stationId === 'station_expo';
 
-  // Orders that are currently in kitchen
   const activeOrders = ordersDb.filter(o => o.status === 'PENDING' || o.status === 'MAKING' || (isExpo && o.status === 'READY'));
 
-  // If Expo, show full orders with their station breakdown
   if (isExpo) {
     return res.json({
       stationId,
       stationName: '总控装配打包台 (Expo)',
-      activeOrders: activeOrders.map(order => {
-        const allItemsDone = order.items.every(i => i.stationStatus === 'DONE');
-        return {
-          ...order,
-          allItemsDone,
-        };
-      }),
+      activeOrders: activeOrders.map(order => ({
+        ...order,
+        allItemsDone: order.items.every(i => i.stationStatus === 'DONE'),
+      })),
       queue: calculateQueueSummary(),
     });
   }
 
-  // If specific making station (Water Bar, Fryer, Grill)
-  const stationOrders: any[] = [];
-  const batchMap = new Map<string, BatchAggregationItem>();
-
+  const stationTasks: { order: OrderMaster; item: OrderItem }[] = [];
   activeOrders.forEach(order => {
-    const stationItems = order.items.filter(i => i.targetStationId === stationId);
-    if (stationItems.length > 0) {
-      stationOrders.push({
-        orderId: order.id,
-        orderNo: order.orderNo,
-        pickupCode: order.pickupCode,
-        channel: order.channel,
-        orderStatus: order.status,
-        createdAt: order.createdAt,
-        paidAt: order.paidAt || order.createdAt,
-        items: stationItems,
-      });
-
-      // Populate batch aggregation map for pending/making items
-      stationItems.forEach(item => {
-        if (item.stationStatus !== 'DONE') {
-          const modSummary = item.selectedModifiers.map(m => m.itemName).sort().join(', ');
-          const signature = `${item.skuId}___${modSummary}`;
-
-          const existing = batchMap.get(signature);
-          const elapsedSec = Math.floor((Date.now() - (order.paidAt || order.createdAt)) / 1000);
-
-          if (existing) {
-            existing.totalQuantity += item.quantity;
-            existing.orderRefs.push({
-              orderId: order.id,
-              pickupCode: order.pickupCode,
-              quantity: item.quantity,
-              elapsedSeconds: elapsedSec,
-            });
-            if (order.createdAt < existing.earliestCreatedAt) {
-              existing.earliestCreatedAt = order.createdAt;
-            }
-          } else {
-            batchMap.set(signature, {
-              skuId: item.skuId,
-              productName: item.productName,
-              targetStationId: stationId,
-              modifierSignature: signature,
-              modifierSummary: modSummary || '标准原味',
-              totalQuantity: item.quantity,
-              orderRefs: [{
-                orderId: order.id,
-                pickupCode: order.pickupCode,
-                quantity: item.quantity,
-                elapsedSeconds: elapsedSec,
-              }],
-              earliestCreatedAt: order.createdAt,
-            });
-          }
-        }
-      });
-    }
+    order.items.forEach(item => {
+      if (item.targetStationId === stationId && item.stationStatus !== 'DONE') {
+        stationTasks.push({ order, item });
+      }
+    });
   });
-
-  const batchAggregation = Array.from(batchMap.values()).sort((a, b) => b.totalQuantity - a.totalQuantity);
 
   res.json({
     stationId,
-    stationName: KDS_STATIONS.find(s => s.id === stationId)?.name || stationId,
-    orders: stationOrders,
-    batchAggregation,
+    tasks: stationTasks,
     queue: calculateQueueSummary(),
   });
 });
 
-// 7. KDS Bump Action (Single item or all items of order at station)
 app.post('/api/kds/task/bump', (req, res) => {
   try {
     const { orderId, itemId, stationId, action = 'BUMP_ITEM' } = req.body;
     const order = ordersDb.find(o => o.id === orderId);
-
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const now = Date.now();
 
-    if (action === 'BUMP_ALL_STATION' && stationId) {
-      order.items.forEach(item => {
-        if (item.targetStationId === stationId) {
-          item.stationStatus = 'DONE';
-          item.completedAt = now;
-        }
+    if (action === 'BUMP_ALL') {
+      order.items.forEach(it => {
+        it.stationStatus = 'DONE';
+        it.completedAt = now;
       });
+      order.status = 'READY';
+      order.readyAt = now;
     } else if (itemId) {
       const item = order.items.find(i => i.itemId === itemId);
       if (item) {
-        if (item.stationStatus === 'PENDING') {
-          item.stationStatus = 'MAKING';
-          item.startedAt = now;
-        } else if (item.stationStatus === 'MAKING') {
-          item.stationStatus = 'DONE';
-          item.completedAt = now;
-        } else {
-          item.stationStatus = 'DONE';
-          item.completedAt = now;
-        }
+        item.stationStatus = 'DONE';
+        item.completedAt = now;
+      }
+      const allDone = order.items.every(i => i.stationStatus === 'DONE');
+      if (allDone) {
+        order.status = 'READY';
+        order.readyAt = now;
+      } else {
+        order.status = 'MAKING';
       }
     }
 
-    // Check if order was PENDING and at least one item is now MAKING
-    const anyMaking = order.items.some(i => i.stationStatus === 'MAKING' || i.stationStatus === 'DONE');
-    if (order.status === 'PENDING' && anyMaking) {
-      order.status = 'MAKING';
-    }
+    const queueSummary = calculateQueueSummary();
 
-    // Check if ALL items in order across all stations are DONE
-    const allDone = order.items.every(i => i.stationStatus === 'DONE');
-    if (allDone && order.status !== 'COMPLETED') {
-      order.status = 'READY';
-      order.readyAt = now;
+    broadcastWSEvent('TASK_BUMPED', {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      status: order.status,
+      queue: queueSummary,
+    });
 
-      // Broadcast order ready event for Calling Screen & TTS
+    if (order.status === 'READY') {
       broadcastWSEvent('ORDER_READY', {
         orderId: order.id,
         pickupCode: order.pickupCode,
-        voiceText: `请 ${order.pickupCode} 号到取餐口取餐`,
-        order,
-        queue: calculateQueueSummary(),
-      });
-    } else {
-      broadcastWSEvent('TASK_BUMPED', {
-        orderId: order.id,
-        pickupCode: order.pickupCode,
-        itemId,
-        stationId,
-        orderStatus: order.status,
-        queue: calculateQueueSummary(),
+        voiceText: `请 ${order.pickupCode} 号顾客到取餐口取餐`,
+        queue: queueSummary,
       });
     }
 
-    res.json({
-      success: true,
-      order,
-      queue: calculateQueueSummary(),
-    });
+    res.json({ success: true, order, queue: queueSummary });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 8. Expo Trigger Call / Voice Broadcast Again
 app.post('/api/kds/expo/call', (req, res) => {
-  const { orderId, pickupCode } = req.body;
-  const order = ordersDb.find(o => o.id === orderId || o.pickupCode === pickupCode);
+  try {
+    const { orderId, pickupCode } = req.body;
+    const order = ordersDb.find(o => o.id === orderId || o.pickupCode === pickupCode);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-
-  if (order.status !== 'READY' && order.status !== 'COMPLETED') {
     order.status = 'READY';
     order.readyAt = Date.now();
+
+    const queueSummary = calculateQueueSummary();
+
+    broadcastWSEvent('ORDER_READY', {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      voiceText: `请 ${order.pickupCode} 号顾客到取餐口取餐`,
+      queue: queueSummary,
+    });
+
+    res.json({ success: true, pickupCode: order.pickupCode, queue: queueSummary });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
-
-  broadcastWSEvent('ORDER_READY', {
-    orderId: order.id,
-    pickupCode: order.pickupCode,
-    voiceText: `请 ${order.pickupCode} 号到取餐口取餐`,
-    order,
-    queue: calculateQueueSummary(),
-  });
-
-  res.json({
-    success: true,
-    pickupCode: order.pickupCode,
-    status: order.status,
-  });
 });
 
-// 9. Scan Code / Complete Order
 app.post('/api/kds/order/complete', (req, res) => {
-  const { orderId, pickupCode } = req.body;
-  const order = ordersDb.find(o => o.id === orderId || o.pickupCode === pickupCode);
+  try {
+    const { pickupCode, orderId } = req.body;
+    const order = ordersDb.find(o => (pickupCode && o.pickupCode === pickupCode) || (orderId && o.id === orderId));
+    if (!order) return res.status(404).json({ error: 'Order not found' });
 
-  if (!order) return res.status(404).json({ error: 'Order not found with provided code' });
+    order.status = 'COMPLETED';
+    order.completedAt = Date.now();
 
-  const now = Date.now();
-  order.status = 'COMPLETED';
-  order.completedAt = now;
+    const queueSummary = calculateQueueSummary();
 
-  broadcastWSEvent('ORDER_COMPLETED', {
-    orderId: order.id,
-    pickupCode: order.pickupCode,
-    turnaroundSeconds: Math.floor((now - order.createdAt) / 1000),
-    queue: calculateQueueSummary(),
-  });
+    broadcastWSEvent('ORDER_COMPLETED', {
+      orderId: order.id,
+      pickupCode: order.pickupCode,
+      queue: queueSummary,
+    });
 
-  res.json({
-    success: true,
-    order,
-    queue: calculateQueueSummary(),
-  });
+    res.json({ success: true, order, queue: queueSummary });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 10. Toggle Sku Sold Out
+app.post('/api/simulate/traffic', (req, res) => {
+  try {
+    const { count = 1 } = req.body;
+    const now = Date.now();
+
+    for (let c = 0; c < count; c++) {
+      const pickupCode = generatePickupCode('QR_H5');
+      const randomSku = productsDb[Math.floor(Math.random() * productsDb.length)] || INITIAL_PRODUCTS[0];
+
+      const simOrder: OrderMaster = {
+        id: `ord_sim_${now}_${c}`,
+        storeId: 'store_bratislava_01',
+        merchantId: 'merchant_002',
+        orderNo: 'SIM' + (now + c),
+        pickupCode,
+        channel: 'QR_H5',
+        status: 'PENDING',
+        paymentStatus: 'PAID',
+        paymentMethod: 'STRIPE_CARD',
+        currency: 'EUR',
+        currencySymbol: '€',
+        totalAmount: randomSku.basePrice,
+        itemsCount: 1,
+        items: [
+          {
+            itemId: `sim_item_${now}_${c}`,
+            orderId: `ord_sim_${now}_${c}`,
+            skuId: randomSku.id,
+            productName: randomSku.name,
+            category: randomSku.category,
+            quantity: 1,
+            unitPrice: randomSku.basePrice,
+            totalPrice: randomSku.basePrice,
+            targetStationId: randomSku.targetStationId,
+            selectedModifiers: [],
+            stationStatus: 'PENDING',
+            prepTimeSeconds: randomSku.prepTimeSeconds,
+          }
+        ],
+        createdAt: now,
+        paidAt: now,
+        estimatedWaitMinutes: 5,
+        queuePosition: ordersDb.filter(o => o.status === 'PENDING' || o.status === 'MAKING').length + 1,
+      };
+
+      ordersDb.unshift(simOrder);
+    }
+
+    const queueSummary = calculateQueueSummary();
+    broadcastWSEvent('PAYMENT_CONFIRMED', { queue: queueSummary });
+
+    res.json({ success: true, count, queue: queueSummary });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/kds/sku/soldout', (req, res) => {
   const { skuId, isSoldOut } = req.body;
   if (isSoldOut) {
@@ -1159,284 +1680,99 @@ app.post('/api/kds/sku/soldout', (req, res) => {
   } else {
     soldOutSkuIds.delete(skuId);
   }
-
-  broadcastWSEvent('ITEM_SOLDOUT_CHANGED', {
-    skuId,
-    isSoldOut,
-  });
-
-  res.json({ success: true, soldOutSkuIds: Array.from(soldOutSkuIds) });
+  broadcastWSEvent('ITEM_SOLDOUT_CHANGED', { skuId, isSoldOut });
+  res.json({ success: true, skuId, isSoldOut });
 });
 
-// 11. High-Concurrency Traffic Simulation Endpoint
-app.post('/api/simulate/traffic', (req, res) => {
-  const { count = 3 } = req.body;
-  const createdList: OrderMaster[] = [];
-  const now = Date.now();
-
-  for (let i = 0; i < count; i++) {
-    const randomSku = INITIAL_PRODUCTS[Math.floor(Math.random() * INITIAL_PRODUCTS.length)];
-    const randomSku2 = Math.random() > 0.4 ? INITIAL_PRODUCTS[Math.floor(Math.random() * INITIAL_PRODUCTS.length)] : null;
-
-    const items: OrderItem[] = [
-      {
-        itemId: `sim_item_${now}_${i}_1`,
-        orderId: '',
-        skuId: randomSku.id,
-        productName: randomSku.name,
-        category: randomSku.category,
-        quantity: Math.floor(Math.random() * 2) + 1,
-        unitPrice: randomSku.basePrice + 2,
-        totalPrice: (randomSku.basePrice + 2) * 1,
-        targetStationId: randomSku.targetStationId,
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度选择', itemId: 'sweet_70', itemName: '七分甜 (70%)', price: 0 },
-          { groupId: 'mod_toppings', groupName: '风味加料', itemId: 'top_boba', itemName: '黑糖琥珀珍珠', price: 2 },
-        ],
-        stationStatus: 'PENDING',
-        prepTimeSeconds: randomSku.prepTimeSeconds,
-      }
-    ];
-
-    if (randomSku2) {
-      items.push({
-        itemId: `sim_item_${now}_${i}_2`,
-        orderId: '',
-        skuId: randomSku2.id,
-        productName: randomSku2.name,
-        category: randomSku2.category,
-        quantity: 1,
-        unitPrice: randomSku2.basePrice,
-        totalPrice: randomSku2.basePrice,
-        targetStationId: randomSku2.targetStationId,
-        selectedModifiers: [],
-        stationStatus: 'PENDING',
-        prepTimeSeconds: randomSku2.prepTimeSeconds,
-      });
-    }
-
-    const orderId = `sim_ord_${now}_${i}`;
-    items.forEach(it => it.orderId = orderId);
-
-    const pickupCode = generatePickupCode('QR_H5');
-    const totalAmount = items.reduce((sum, it) => sum + it.totalPrice, 0);
-
-    const simOrder: OrderMaster = {
-      id: orderId,
-      storeId: STORE_CONFIG.storeId,
-      tenantId: STORE_CONFIG.tenantId,
-      orderNo: 'ORD' + (now + i * 100),
-      pickupCode,
-      channel: 'QR_H5',
-      status: 'PENDING',
-      paymentStatus: 'PAID',
-      paymentMethod: 'STRIPE_CARD',
-      currency: '¥',
-      totalAmount,
-      itemsCount: items.reduce((s, it) => s + it.quantity, 0),
-      items,
-      createdAt: now + i * 200,
-      paidAt: now + i * 200 + 50,
-      estimatedWaitMinutes: Math.max(5, Math.ceil(items.length * 2.5)),
-      queuePosition: ordersDb.filter(o => o.status === 'PENDING' || o.status === 'MAKING').length + 1,
-    };
-
-    ordersDb.unshift(simOrder);
-    createdList.push(simOrder);
-
-    broadcastWSEvent('PAYMENT_CONFIRMED', {
-      order: simOrder,
-      pickupCode,
-      queue: calculateQueueSummary(),
-    });
-  }
-
-  res.json({
-    success: true,
-    message: `Generated ${count} high-concurrency peak orders with instant Webhook verification`,
-    orders: createdList,
-    queue: calculateQueueSummary(),
-  });
-});
-
-// 12. Full System Architecture, MySQL 8.0 DDL & Master Prompt Spec
+// -------------------------------------------------------------
+// System Architecture Spec & AI Master Prompt Specification
+// -------------------------------------------------------------
 app.get('/api/architecture/spec', (req, res) => {
-  const ddl = `
--- =========================================================================
--- 无座茶饮与快餐业态 SaaS 生产级 MySQL 8.0 DDL 架构设计脚本
--- 核心特性：多租户隔离、先付流水排队、树状多层级规格变价、KDS多工位解耦
--- =========================================================================
-
-CREATE DATABASE IF NOT EXISTS \`seatless_catering_saas\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE \`seatless_catering_saas\`;
-
--- 1. 租户表
-CREATE TABLE IF NOT EXISTS \`tenant\` (
-  \`tenant_id\` VARCHAR(32) NOT NULL COMMENT '租户ID (如 TENANT_001)',
-  \`name\` VARCHAR(128) NOT NULL COMMENT '品牌/租户企业名称',
-  \`contact_name\` VARCHAR(64) NULL COMMENT '联系人',
-  \`contact_phone\` VARCHAR(32) NULL COMMENT '联系电话',
-  \`status\` ENUM('ACTIVE', 'SUSPENDED', 'EXPIRED') NOT NULL DEFAULT 'ACTIVE' COMMENT '状态',
-  \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (\`tenant_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='租户基础表';
-
--- 2. 门店表
-CREATE TABLE IF NOT EXISTS \`store\` (
-  \`store_id\` VARCHAR(32) NOT NULL COMMENT '门店ID',
-  \`tenant_id\` VARCHAR(32) NOT NULL COMMENT '所属租户ID',
-  \`name\` VARCHAR(128) NOT NULL COMMENT '门店名称 (如 科技园旗舰店)',
-  \`address\` VARCHAR(255) NOT NULL COMMENT '门店物理地址',
-  \`business_status\` ENUM('OPEN', 'CLOSED', 'BUSY') NOT NULL DEFAULT 'OPEN',
-  \`timezone\` VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
-  \`operating_hours\` VARCHAR(64) NOT NULL DEFAULT '09:00-22:00',
-  \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (\`store_id\`),
-  INDEX \`idx_tenant_store\` (\`tenant_id\`, \`business_status\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店配置表';
-
--- 3. KDS 工作站配置表
-CREATE TABLE IF NOT EXISTS \`kds_station\` (
-  \`station_id\` VARCHAR(32) NOT NULL COMMENT '工作站唯一ID (如 station_bar)',
-  \`store_id\` VARCHAR(32) NOT NULL COMMENT '门店ID',
-  \`tenant_id\` VARCHAR(32) NOT NULL COMMENT '租户ID',
-  \`name\` VARCHAR(64) NOT NULL COMMENT '站台名称 (水吧台/炸台/煎烤台/Expo总控)',
-  \`station_type\` ENUM('MAKING', 'EXPO') NOT NULL DEFAULT 'MAKING' COMMENT '站台类型',
-  \`sort_order\` INT NOT NULL DEFAULT 0 COMMENT '排序权重',
-  \`is_active\` TINYINT(1) NOT NULL DEFAULT 1,
-  \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (\`station_id\`),
-  INDEX \`idx_store_station\` (\`store_id\`, \`station_type\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='KDS厨房显示工作站配置表';
-
--- 4. 商品与SKU体系 (分类、SPU、SKU)
-CREATE TABLE IF NOT EXISTS \`product_category\` (
-  \`category_id\` VARCHAR(32) NOT NULL,
-  \`store_id\` VARCHAR(32) NOT NULL,
-  \`tenant_id\` VARCHAR(32) NOT NULL,
-  \`name\` VARCHAR(64) NOT NULL COMMENT '分类名称 (招牌鲜奶茶/炸鸡小食)',
-  \`sort_order\` INT NOT NULL DEFAULT 0,
-  PRIMARY KEY (\`category_id\`),
-  INDEX \`idx_store_cat\` (\`store_id\`, \`sort_order\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品类目表';
-
-CREATE TABLE IF NOT EXISTS \`product_sku\` (
-  \`sku_id\` VARCHAR(32) NOT NULL,
-  \`category_id\` VARCHAR(32) NOT NULL,
-  \`store_id\` VARCHAR(32) NOT NULL,
-  \`tenant_id\` VARCHAR(32) NOT NULL,
-  \`name\` VARCHAR(128) NOT NULL COMMENT '单品名称',
-  \`base_price\` DECIMAL(10,2) NOT NULL COMMENT '基础售价',
-  \`image_url\` VARCHAR(512) NULL,
-  \`target_station_id\` VARCHAR(32) NOT NULL COMMENT '默认路由到的制作站台',
-  \`prep_time_seconds\` INT NOT NULL DEFAULT 60 COMMENT '标准工时SLA(秒)',
-  \`is_sold_out\` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否沽清',
-  \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (\`sku_id\`),
-  INDEX \`idx_store_sku\` (\`store_id\`, \`category_id\`, \`is_sold_out\`),
-  INDEX \`idx_station_sku\` (\`target_station_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品SKU表';
-
--- 5. 树状规格加料组与选项表
-CREATE TABLE IF NOT EXISTS \`modifier_group\` (
-  \`group_id\` VARCHAR(32) NOT NULL,
-  \`tenant_id\` VARCHAR(32) NOT NULL,
-  \`name\` VARCHAR(64) NOT NULL COMMENT '规格组名 (甜度/温度/加料)',
-  \`type\` ENUM('SINGLE', 'MULTIPLE') NOT NULL DEFAULT 'SINGLE',
-  \`min_selections\` INT NOT NULL DEFAULT 0,
-  \`max_selections\` INT NOT NULL DEFAULT 1,
-  \`is_required\` TINYINT(1) NOT NULL DEFAULT 0,
-  PRIMARY KEY (\`group_id\`),
-  INDEX \`idx_tenant_modgroup\` (\`tenant_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='规格组定义表';
-
-CREATE TABLE IF NOT EXISTS \`modifier_item\` (
-  \`item_id\` VARCHAR(32) NOT NULL,
-  \`group_id\` VARCHAR(32) NOT NULL,
-  \`name\` VARCHAR(64) NOT NULL COMMENT '定制项 (七分甜/少冰/珍珠+2元)',
-  \`extra_price\` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '加价金额',
-  \`is_default\` TINYINT(1) NOT NULL DEFAULT 0,
-  PRIMARY KEY (\`item_id\`),
-  INDEX \`idx_group_item\` (\`group_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='规格定制细项表';
-
--- 6. 主订单表
-CREATE TABLE IF NOT EXISTS \`order_master\` (
-  \`order_id\` VARCHAR(64) NOT NULL COMMENT '订单唯一ID',
-  \`store_id\` VARCHAR(32) NOT NULL,
-  \`tenant_id\` VARCHAR(32) NOT NULL,
-  \`order_no\` VARCHAR(64) NOT NULL COMMENT '业务订单流水号',
-  \`pickup_code\` VARCHAR(16) NOT NULL COMMENT '当日取餐流水码 (如 A001, B002)',
-  \`channel\` ENUM('QR_H5', 'KIOSK', 'DELIVERY_AGGREGATOR') NOT NULL DEFAULT 'QR_H5',
-  \`status\` ENUM('UNPAID', 'PENDING', 'MAKING', 'READY', 'COMPLETED', 'CANCELLED') NOT NULL DEFAULT 'UNPAID',
-  \`payment_status\` ENUM('PENDING', 'PAID', 'FAILED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
-  \`payment_method\` VARCHAR(32) NOT NULL DEFAULT 'STRIPE_CARD',
-  \`stripe_payment_intent_id\` VARCHAR(128) NULL,
-  \`total_amount\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  \`items_count\` INT NOT NULL DEFAULT 1,
-  \`customer_phone\` VARCHAR(32) NULL,
-  \`estimated_wait_minutes\` INT NOT NULL DEFAULT 5,
-  \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  \`paid_at\` DATETIME NULL,
-  \`ready_at\` DATETIME NULL,
-  \`completed_at\` DATETIME NULL,
-  PRIMARY KEY (\`order_id\`),
-  UNIQUE INDEX \`uniq_store_bizdate_pickup\` (\`store_id\`, \`created_at\`, \`pickup_code\`),
-  INDEX \`idx_store_status_time\` (\`store_id\`, \`status\`, \`created_at\`),
-  INDEX \`idx_order_no\` (\`order_no\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='主订单表';
-
--- 7. 订单明细与制作工单任务表
-CREATE TABLE IF NOT EXISTS \`order_item\` (
-  \`item_id\` VARCHAR(64) NOT NULL,
-  \`order_id\` VARCHAR(64) NOT NULL,
-  \`sku_id\` VARCHAR(32) NOT NULL,
-  \`product_name\` VARCHAR(128) NOT NULL,
-  \`quantity\` INT NOT NULL DEFAULT 1,
-  \`unit_price\` DECIMAL(10,2) NOT NULL,
-  \`total_price\` DECIMAL(10,2) NOT NULL,
-  \`target_station_id\` VARCHAR(32) NOT NULL COMMENT '路由KDS站台',
-  \`station_status\` ENUM('PENDING', 'MAKING', 'DONE') NOT NULL DEFAULT 'PENDING',
-  \`prep_time_seconds\` INT NOT NULL DEFAULT 60,
-  \`started_at\` DATETIME NULL,
-  \`completed_at\` DATETIME NULL,
-  PRIMARY KEY (\`item_id\`),
-  INDEX \`idx_order_item\` (\`order_id\`),
-  INDEX \`idx_station_task\` (\`target_station_id\`, \`station_status\`, \`item_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细与工位制作任务表';
-
--- 8. 订单明细规格加价快照表 (防止后续改价影响历史财务对账)
-CREATE TABLE IF NOT EXISTS \`order_item_modifier\` (
-  \`snapshot_id\` BIGINT AUTO_INCREMENT,
-  \`item_id\` VARCHAR(64) NOT NULL,
-  \`group_id\` VARCHAR(32) NOT NULL,
-  \`group_name\` VARCHAR(64) NOT NULL,
-  \`item_id_ref\` VARCHAR(32) NOT NULL,
-  \`item_name\` VARCHAR(64) NOT NULL,
-  \`extra_price\` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  PRIMARY KEY (\`snapshot_id\`),
-  INDEX \`idx_item_snapshot\` (\`item_id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='定制规格变价快照表';
-`;
-
   res.json({
-    ddl,
+    ddl: `-- MySQL 8.0 餐饮SaaS多租户核心表结构规范
+CREATE TABLE \`tenant_merchants\` (
+  \`id\` VARCHAR(64) PRIMARY KEY,
+  \`name\` VARCHAR(128) NOT NULL,
+  \`contact_person\` VARCHAR(64),
+  \`email\` VARCHAR(128),
+  \`phone\` VARCHAR(32),
+  \`status\` ENUM('ACTIVE', 'SUSPENDED', 'PENDING') DEFAULT 'ACTIVE',
+  \`plan_type\` ENUM('TRIAL', 'PRO', 'ENTERPRISE') DEFAULT 'PRO',
+  \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE \`tenant_stores\` (
+  \`id\` VARCHAR(64) PRIMARY KEY,
+  \`merchant_id\` VARCHAR(64) NOT NULL,
+  \`store_name\` VARCHAR(128) NOT NULL,
+  \`country\` VARCHAR(64) NOT NULL,
+  \`currency\` VARCHAR(16) NOT NULL DEFAULT 'EUR',
+  \`currency_symbol\` VARCHAR(8) NOT NULL DEFAULT '€',
+  \`address\` VARCHAR(256),
+  \`operating_hours\` VARCHAR(128),
+  \`status\` ENUM('OPEN', 'BUSY', 'CLOSED') DEFAULT 'OPEN',
+  \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX \`idx_merchant\` (\`merchant_id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE \`orders_master\` (
+  \`id\` VARCHAR(64) PRIMARY KEY,
+  \`store_id\` VARCHAR(64) NOT NULL,
+  \`merchant_id\` VARCHAR(64),
+  \`order_no\` VARCHAR(64) NOT NULL UNIQUE,
+  \`pickup_code\` VARCHAR(16) NOT NULL,
+  \`channel\` ENUM('QR_H5', 'COUNTER_POS', 'KIOSK', 'DELIVERY_AGGREGATOR') DEFAULT 'QR_H5',
+  \`status\` ENUM('UNPAID', 'PENDING', 'MAKING', 'READY', 'COMPLETED', 'CANCELLED') DEFAULT 'PENDING',
+  \`payment_status\` ENUM('PENDING', 'PAID', 'FAILED', 'REFUNDED') DEFAULT 'PAID',
+  \`payment_method\` ENUM('CASH', 'POS_CARD', 'STRIPE_CARD', 'STRIPE_APPLE_PAY') DEFAULT 'STRIPE_CARD',
+  \`currency\` VARCHAR(16) NOT NULL DEFAULT 'EUR',
+  \`total_amount\` DECIMAL(10, 2) NOT NULL,
+  \`items_count\` INT NOT NULL DEFAULT 1,
+  \`created_at\` BIGINT NOT NULL,
+  \`paid_at\` BIGINT,
+  \`ready_at\` BIGINT,
+  \`completed_at\` BIGINT,
+  INDEX \`idx_store_created\` (\`store_id\`, \`created_at\`),
+  INDEX \`idx_pickup_code\` (\`pickup_code\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE \`order_items\` (
+  \`item_id\` VARCHAR(64) PRIMARY KEY,
+  \`order_id\` VARCHAR(64) NOT NULL,
+  \`sku_id\` VARCHAR(64) NOT NULL,
+  \`product_name\` VARCHAR(128) NOT NULL,
+  \`category\` VARCHAR(64) NOT NULL,
+  \`quantity\` INT NOT NULL DEFAULT 1,
+  \`unit_price\` DECIMAL(10, 2) NOT NULL,
+  \`total_price\` DECIMAL(10, 2) NOT NULL,
+  \`target_station_id\` VARCHAR(64) NOT NULL,
+  \`selected_modifiers\` JSON,
+  \`station_status\` ENUM('PENDING', 'MAKING', 'DONE') DEFAULT 'PENDING',
+  \`prep_time_seconds\` INT DEFAULT 60,
+  INDEX \`idx_order_id\` (\`order_id\`),
+  INDEX \`idx_station\` (\`target_station_id\`, \`station_status\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
     apiContract: [
-      { method: 'POST', path: '/api/order/create', desc: 'C端H5创建预订单，校验树状加料并返回 Stripe ClientSecret' },
-      { method: 'POST', path: '/api/webhook/stripe', desc: 'Stripe异步Webhook回调，原子生成取餐流水号并触发KDS路由与云打印' },
-      { method: 'GET', path: '/api/kds/station/:stationId/tasks', desc: 'KDS制作站台获取工单列表与同品项聚类看板' },
-      { method: 'POST', path: '/api/kds/task/bump', desc: '工位消单(Bump)，整单完成自动拉起总控并触发叫号' },
-      { method: 'POST', path: '/api/kds/expo/call', desc: '总控打包台呼叫取餐码，触发叫号大屏翻牌与TTS语音播报' },
-      { method: 'POST', path: '/api/kds/order/complete', desc: '扫码枪/取餐码快速核销并归档' },
+      { method: 'POST', path: '/api/order/create', desc: '顾客手机H5扫码提交定制订单并初始化付款' },
+      { method: 'POST', path: '/api/counter/order/create-and-pay', desc: '吧台POS操作员直接收银(现金/POS刷卡)即时出单' },
+      { method: 'GET', path: '/api/orders', desc: '根据门店与状态筛选获取当前工单流水' },
+      { method: 'POST', path: '/api/kds/task/bump', desc: 'KDS分工位触屏一键消单推进制作状态' },
+      { method: 'POST', path: '/api/kds/expo/call', desc: 'Expo总控打包台齐套确认触发大屏叫号与语音TTS' },
+      { method: 'POST', path: '/api/kds/order/complete', desc: '顾客取餐核销完成闭环' },
+      { method: 'GET', path: '/api/admin/analytics/sales', desc: '商家与店长多维度营业额与商品销量统计分析' },
+      { method: 'GET', path: '/api/admin/inventory', desc: '店长查询当前门店原料物料库存与预警台账' },
+      { method: 'POST', path: '/api/admin/inventory/adjust', desc: '店长执行采购入库、制作消耗、损耗报废、盘点校准' }
     ],
     wsTopics: [
-      { topic: 'PAYMENT_CONFIRMED', desc: '支付成功，通知KDS刷单与云打印机出杯贴' },
-      { topic: 'TASK_BUMPED', desc: '分站完成制作工单消单，更新总控进度' },
-      { topic: 'ORDER_READY', desc: '整单制作就绪，叫号大屏翻牌高亮并播报语音' },
-      { topic: 'ORDER_COMPLETED', desc: '顾客取餐核销，更新排队看板' },
-    ],
+      { topic: 'ORDER_CREATED', desc: '新订单入库，通知所有终端' },
+      { topic: 'PAYMENT_CONFIRMED', desc: '支付成功，KDS分站与排队引擎实时刷新' },
+      { topic: 'STATION_TASK_BUMPED', desc: '分工位制作推进，Expo装配看板同步更新' },
+      { topic: 'EXPO_ORDER_CALLED', desc: '总控齐套叫号，取餐大屏翻牌与TTS语音播报' },
+      { topic: 'ORDER_COMPLETED', desc: '出餐核销，移出活动列表' },
+      { topic: 'MERCHANTS_UPDATED', desc: '商家信息及门店管辖范围变动实时推送' },
+      { topic: 'STORES_UPDATED', desc: '门店基础信息与法定币种配置变动实时推送' },
+      { topic: 'INVENTORY_UPDATED', desc: '食材库存发生变动，即时同步店长端' }
+    ]
   });
 });
 

@@ -1,18 +1,42 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { OrderMaster, ProductSKU, ModifierGroup, KDSStation, QueueSummary, WSEvent, MenuCategory, StaffUser, PermissionDefinition } from '../types';
+import { 
+  OrderMaster, 
+  ProductSKU, 
+  ModifierGroup, 
+  KDSStation, 
+  QueueSummary, 
+  WSEvent, 
+  MenuCategory, 
+  StaffUser, 
+  PermissionDefinition,
+  MerchantAccount,
+  StoreEntity,
+  InventoryItem,
+  InventoryLog,
+  CurrencyCode
+} from '../types';
 import { STORE_CONFIG, KDS_STATIONS, MODIFIER_GROUPS, INITIAL_PRODUCTS } from '../data/menuData';
 import { INITIAL_CATEGORIES, INITIAL_STAFF_USERS, PERMISSION_DEFINITIONS } from '../data/adminData';
+import { INITIAL_MERCHANTS, INITIAL_STORES } from '../data/merchantStoreData';
+import { INITIAL_INVENTORY_ITEMS, INITIAL_INVENTORY_LOGS } from '../data/inventoryData';
 import { SupportedLanguage, SUPPORTED_LANGUAGES, TRANSLATIONS } from '../i18n/translations';
+import { formatCurrency, SUPPORTED_CURRENCIES } from '../data/currencies';
 import { sound } from '../utils/audio';
 
 interface AppContextType {
   store: typeof STORE_CONFIG;
+  currentStore: StoreEntity;
+  stores: StoreEntity[];
+  merchants: MerchantAccount[];
+  currentMerchant: MerchantAccount | null;
   stations: KDSStation[];
   modifierGroups: ModifierGroup[];
   categories: MenuCategory[];
   products: ProductSKU[];
   orders: OrderMaster[];
   queueSummary: QueueSummary;
+  inventoryItems: InventoryItem[];
+  inventoryLogs: InventoryLog[];
   wsConnected: boolean;
   activeOrderForTracking: OrderMaster | null;
   lastCalledCode: string | null;
@@ -22,22 +46,33 @@ interface AppContextType {
   currentStaffUser: StaffUser;
   staffUsers: StaffUser[];
   permissionsList: PermissionDefinition[];
+  
+  // Actions
   setTheme: (theme: 'light' | 'dark') => void;
   setCurrentLang: (lang: SupportedLanguage) => void;
   setCurrentStaffUser: (user: StaffUser) => void;
+  setCurrentStore: (store: StoreEntity) => void;
+  switchActiveStore: (storeId: string) => void;
   t: (key: string) => string;
+  formatPrice: (amount: number, currencyCode?: CurrencyCode | string) => string;
   setAudioEnabled: (enabled: boolean) => void;
   setActiveOrderForTracking: (order: OrderMaster | null) => void;
   refreshOrders: () => Promise<void>;
   fetchMenu: () => Promise<void>;
+  fetchMerchants: () => Promise<void>;
+  fetchStores: () => Promise<void>;
+  fetchInventory: () => Promise<void>;
+  
+  // Order Operations
   createOrder: (items: any[], customerPhone?: string, notes?: string) => Promise<any>;
   createCounterOrderAndPay: (payload: {
     items: any[];
-    paymentMethod: 'CASH' | 'POS_CARD' | 'COUNTER_WECHAT' | 'COUNTER_ALIPAY';
+    paymentMethod: 'CASH' | 'POS_CARD';
     cashDetails?: { receivedAmount: number; changeAmount: number };
     cardDetails?: { cardLast4: string; authCode: string };
     customerPhone?: string;
     notes?: string;
+    storeId?: string;
   }) => Promise<any>;
   triggerStripeWebhook: (orderId: string) => Promise<any>;
   bumpKdsTask: (orderId: string, itemId?: string, stationId?: string, action?: string) => Promise<any>;
@@ -61,6 +96,26 @@ interface AppContextType {
   updateStaffUser: (id: string, updates: Partial<StaffUser>) => Promise<any>;
   deleteStaffUser: (id: string) => Promise<any>;
   hasPermission: (permissionId: string) => boolean;
+
+  // Merchant Management (Vendor SUPER_ADMIN)
+  createMerchantAccount: (merchant: Partial<MerchantAccount>) => Promise<any>;
+  updateMerchantAccount: (id: string, updates: Partial<MerchantAccount>) => Promise<any>;
+  deleteMerchantAccount: (id: string) => Promise<any>;
+
+  // Store Management (Vendor SUPER_ADMIN)
+  createStoreEntity: (store: Partial<StoreEntity>) => Promise<any>;
+  updateStoreEntity: (id: string, updates: Partial<StoreEntity>) => Promise<any>;
+  assignStoreToMerchant: (storeId: string, merchantId: string) => Promise<any>;
+
+  // Ingredient Inventory (Store Manager)
+  adjustInventory: (payload: {
+    itemId: string;
+    type: 'RESTOCK' | 'CONSUME' | 'WASTE' | 'CALIBRATE';
+    delta?: number;
+    targetBalance?: number;
+    notes?: string;
+  }) => Promise<any>;
+  createInventoryItem: (item: Partial<InventoryItem>) => Promise<any>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -70,22 +125,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [products, setProducts] = useState<ProductSKU[]>(INITIAL_PRODUCTS);
   const [orders, setOrders] = useState<OrderMaster[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>(INITIAL_STAFF_USERS);
-  const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser>(INITIAL_STAFF_USERS[1]); // Default to Store Manager (陈雅欣)
-  const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Default to requested Light Style
+  
+  // Multi-merchant & Multi-store state
+  const [merchants, setMerchants] = useState<MerchantAccount[]>(INITIAL_MERCHANTS);
+  const [stores, setStores] = useState<StoreEntity[]>(INITIAL_STORES);
+  const [currentStore, setCurrentStore] = useState<StoreEntity>(INITIAL_STORES[0]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(INITIAL_INVENTORY_ITEMS);
+  const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>(INITIAL_INVENTORY_LOGS);
+
+  // Active Role User (Default to Store Manager for quick review)
+  const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser>(INITIAL_STAFF_USERS[1]);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Requested Pure Light Style
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>('zh');
 
   const [queueSummary, setQueueSummary] = useState<QueueSummary>({
     waitingCups: 4,
     makingOrdersCount: 2,
     readyOrdersCount: 1,
-    completedTodayCount: 1,
-    avgWaitTimeMinutes: 6,
-    currentCallingCodes: ['A002'],
+    completedTodayCount: 2,
+    avgWaitTimeMinutes: 5,
+    currentCallingCodes: ['C002'],
   });
   const [wsConnected, setWsConnected] = useState(false);
   const [activeOrderForTracking, setActiveOrderForTracking] = useState<OrderMaster | null>(null);
-  const [lastCalledCode, setLastCalledCode] = useState<string | null>('A002');
+  const [lastCalledCode, setLastCalledCode] = useState<string | null>('C002');
   const [audioEnabled, setAudioEnabled] = useState(true);
+
+  // Get current merchant associated with currentStore or currentStaffUser
+  const currentMerchant = merchants.find(m => m.id === currentStore.merchantId) || (currentStaffUser.merchantId ? merchants.find(m => m.id === currentStaffUser.merchantId) : null) || null;
 
   // i18n Translation Lookup
   const t = useCallback((key: string): string => {
@@ -93,17 +160,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return langDict[key] || TRANSLATIONS.zh[key] || key;
   }, [currentLang]);
 
+  // Format Price with active store currency
+  const formatPrice = useCallback((amount: number, currencyCode?: CurrencyCode | string): string => {
+    const code = (currencyCode || currentStore.currency || 'EUR') as CurrencyCode;
+    return formatCurrency(amount, code);
+  }, [currentStore.currency]);
+
   // RBAC Permission Checker
   const hasPermission = useCallback((permissionId: string): boolean => {
     if (!currentStaffUser) return false;
     if (currentStaffUser.role === 'SUPER_ADMIN') return true;
+    if (currentStaffUser.role === 'MERCHANT') {
+      // Merchant has access to all store management, analytics, products, staff, but CANNOT create stores or manage SaaS vendors
+      if (permissionId === 'perm_merchant_manage' || permissionId === 'perm_store_create') {
+        return false;
+      }
+      return true;
+    }
     return currentStaffUser.permissions.includes(permissionId);
   }, [currentStaffUser]);
+
+  // Switch Active Store
+  const switchActiveStore = useCallback((storeId: string) => {
+    const found = stores.find(s => s.id === storeId);
+    if (found) {
+      setCurrentStore(found);
+    }
+  }, [stores]);
 
   // Fetch full state from backend
   const refreshOrders = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders');
+      const res = await fetch(`/api/orders?storeId=${currentStore.id}`);
       if (res.ok) {
         const data = await res.json();
         setOrders(data.orders || []);
@@ -112,7 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.error('Failed to fetch orders:', err);
     }
-  }, []);
+  }, [currentStore.id]);
 
   const fetchMenu = useCallback(async () => {
     try {
@@ -140,10 +228,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const fetchMerchants = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/merchants');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.merchants) setMerchants(data.merchants);
+      }
+    } catch (err) {
+      console.error('Failed to fetch merchants:', err);
+    }
+  }, []);
+
+  const fetchStores = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/stores');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.stores) {
+          setStores(data.stores);
+          // Keep currentStore updated
+          const updatedCurrent = data.stores.find((s: StoreEntity) => s.id === currentStore.id);
+          if (updatedCurrent) setCurrentStore(updatedCurrent);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch stores:', err);
+    }
+  }, [currentStore.id]);
+
+  const fetchInventory = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/inventory?storeId=${currentStore.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.inventory) setInventoryItems(data.inventory);
+        if (data.logs) setInventoryLogs(data.logs);
+      }
+    } catch (err) {
+      console.error('Failed to fetch inventory:', err);
+    }
+  }, [currentStore.id]);
+
+  // Auto-detect domain/tenant resolution on startup
+  useEffect(() => {
+    const resolveDomainTenant = async () => {
+      try {
+        const hostname = window.location.hostname;
+        if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') return;
+        const res = await fetch(`/api/tenant/resolve?host=${encodeURIComponent(hostname)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.matched && data.store) {
+            setCurrentStore(data.store);
+          }
+        }
+      } catch (e) {
+        console.warn('Domain resolve check skipped:', e);
+      }
+    };
+    resolveDomainTenant();
+  }, []);
+
   // Setup WebSocket Listener
   useEffect(() => {
     fetchMenu();
     fetchStaff();
+    fetchMerchants();
+    fetchStores();
+    fetchInventory();
     refreshOrders();
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -187,7 +340,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (socket) socket.close();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [fetchMenu, fetchStaff, refreshOrders]);
+  }, [fetchMenu, fetchStaff, fetchMerchants, fetchStores, fetchInventory, refreshOrders]);
 
   const handleWsEvent = (event: WSEvent) => {
     refreshOrders();
@@ -209,6 +362,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fetchMenu();
     } else if (event.type === 'CATEGORIES_UPDATED') {
       fetchMenu();
+    } else if (event.type === 'MERCHANTS_UPDATED') {
+      fetchMerchants();
+    } else if (event.type === 'STORES_UPDATED') {
+      fetchStores();
+    } else if (event.type === 'INVENTORY_UPDATED') {
+      fetchInventory();
     }
   };
 
@@ -225,16 +384,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createCounterOrderAndPay = async (payload: {
     items: any[];
-    paymentMethod: 'CASH' | 'POS_CARD' | 'COUNTER_WECHAT' | 'COUNTER_ALIPAY';
+    paymentMethod: 'CASH' | 'POS_CARD';
     cashDetails?: { receivedAmount: number; changeAmount: number };
     cardDetails?: { cardLast4: string; authCode: string };
     customerPhone?: string;
     notes?: string;
+    storeId?: string;
   }) => {
     const res = await fetch('/api/counter/order/create-and-pay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        storeId: payload.storeId || currentStore.id,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '吧台收银结算失败');
@@ -247,14 +410,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: 'payment_intent.succeeded',
-        data: {
-          object: {
-            id: `pi_mock_${Date.now()}`,
-            metadata: { orderId },
-            status: 'succeeded',
-          },
-        },
+        orderId,
+        eventType: 'payment_intent.succeeded',
+        paymentMethod: 'STRIPE_CARD',
       }),
     });
     const data = await res.json();
@@ -424,16 +582,137 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return data;
   };
 
+  // Merchant Account Management Handlers
+  const createMerchantAccount = async (merchant: Partial<MerchantAccount>) => {
+    const res = await fetch('/api/admin/merchants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(merchant),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '创建商家账户失败');
+    await fetchMerchants();
+    await fetchStores();
+    return data;
+  };
+
+  const updateMerchantAccount = async (id: string, updates: Partial<MerchantAccount>) => {
+    const res = await fetch(`/api/admin/merchants/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '更新商家账户失败');
+    await fetchMerchants();
+    await fetchStores();
+    return data;
+  };
+
+  const deleteMerchantAccount = async (id: string) => {
+    const res = await fetch(`/api/admin/merchants/${id}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '删除商家账户失败');
+    await fetchMerchants();
+    await fetchStores();
+    return data;
+  };
+
+  // Store Management Handlers
+  const createStoreEntity = async (store: Partial<StoreEntity>) => {
+    const res = await fetch('/api/admin/stores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(store),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '创建店铺失败');
+    await fetchStores();
+    await fetchMerchants();
+    return data;
+  };
+
+  const updateStoreEntity = async (id: string, updates: Partial<StoreEntity>) => {
+    const res = await fetch(`/api/admin/stores/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '更新店铺失败');
+    await fetchStores();
+    await fetchMerchants();
+    return data;
+  };
+
+  const assignStoreToMerchant = async (storeId: string, merchantId: string) => {
+    const res = await fetch(`/api/admin/stores/${storeId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ merchantId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '分配店铺失败');
+    await fetchStores();
+    await fetchMerchants();
+    return data;
+  };
+
+  // Inventory Management Handlers
+  const adjustInventory = async (payload: {
+    itemId: string;
+    type: 'RESTOCK' | 'CONSUME' | 'WASTE' | 'CALIBRATE';
+    delta?: number;
+    targetBalance?: number;
+    notes?: string;
+  }) => {
+    const res = await fetch('/api/admin/inventory/adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        operator: currentStaffUser.name,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '库存调整失败');
+    await fetchInventory();
+    return data;
+  };
+
+  const createInventoryItem = async (item: Partial<InventoryItem>) => {
+    const res = await fetch('/api/admin/inventory/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...item,
+        storeId: currentStore.id,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '添加原料物料失败');
+    await fetchInventory();
+    return data;
+  };
+
   return (
     <AppContext.Provider
       value={{
         store: STORE_CONFIG,
+        currentStore,
+        stores,
+        merchants,
+        currentMerchant,
         stations: KDS_STATIONS,
         modifierGroups: MODIFIER_GROUPS,
         categories,
         products,
         orders,
         queueSummary,
+        inventoryItems,
+        inventoryLogs,
         wsConnected,
         activeOrderForTracking,
         lastCalledCode,
@@ -446,11 +725,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTheme,
         setCurrentLang,
         setCurrentStaffUser,
+        setCurrentStore,
+        switchActiveStore,
         t,
+        formatPrice,
         setAudioEnabled,
         setActiveOrderForTracking,
         refreshOrders,
         fetchMenu,
+        fetchMerchants,
+        fetchStores,
+        fetchInventory,
         createOrder,
         createCounterOrderAndPay,
         triggerStripeWebhook,
@@ -469,6 +754,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStaffUser,
         deleteStaffUser,
         hasPermission,
+        createMerchantAccount,
+        updateMerchantAccount,
+        deleteMerchantAccount,
+        createStoreEntity,
+        updateStoreEntity,
+        assignStoreToMerchant,
+        adjustInventory,
+        createInventoryItem,
       }}
     >
       {children}

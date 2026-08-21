@@ -28,11 +28,11 @@ export const CounterRegisterAuditView: React.FC = () => {
 
   // 过滤订单列表
   const counterOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return (orders || []).filter((o) => {
       const matchSearch =
         !searchTerm ||
-        o.pickupCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        o.pickupCode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        o.orderNo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (o.customerPhoneMasked && o.customerPhoneMasked.includes(searchTerm));
 
       const matchPay =
@@ -58,18 +58,18 @@ export const CounterRegisterAuditView: React.FC = () => {
     let cardTotal = 0;
     let qrTotal = 0;
 
-    orders.forEach((o) => {
+    (orders || []).forEach((o) => {
       if (o.paymentStatus === 'PAID') {
-        totalRevenue += o.totalAmount;
+        totalRevenue += (o.totalAmount || 0);
         if (o.paymentMethod === 'CASH') {
-          cashTotal += o.totalAmount;
+          cashTotal += (o.totalAmount || 0);
           if (o.cashDetails?.changeAmount) {
             cashChangeTotal += o.cashDetails.changeAmount;
           }
         } else if (o.paymentMethod === 'POS_CARD' || o.paymentMethod === 'STRIPE_CARD') {
-          cardTotal += o.totalAmount;
+          cardTotal += (o.totalAmount || 0);
         } else {
-          qrTotal += o.totalAmount;
+          qrTotal += (o.totalAmount || 0);
         }
       }
     });
@@ -80,8 +80,8 @@ export const CounterRegisterAuditView: React.FC = () => {
       cashChangeTotal,
       cardTotal,
       qrTotal,
-      totalOrders: orders.length,
-      paidOrders: orders.filter((o) => o.paymentStatus === 'PAID').length,
+      totalOrders: (orders || []).length,
+      paidOrders: (orders || []).filter((o) => o.paymentStatus === 'PAID').length,
     };
   }, [orders]);
 

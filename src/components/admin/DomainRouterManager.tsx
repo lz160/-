@@ -69,9 +69,9 @@ export const DomainRouterManager: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-stone-900">多租户独立域名与子域名路由系统 (Custom Domain Routing)</h2>
+              <h2 className="text-lg font-black text-stone-900">多租户独立域名与子域名路由系统</h2>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                白标 White-Label
+                品牌独立白标定制
               </span>
             </div>
             <p className="text-xs text-stone-500 mt-1 max-w-3xl leading-relaxed">
@@ -117,7 +117,7 @@ export const DomainRouterManager: React.FC = () => {
         {/* 快捷点击测试预设 */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-[11px] text-stone-400 font-bold">快捷测试预设域名:</span>
-          {stores
+          {(stores || [])
             .filter((s) => s.customDomain)
             .map((s) => (
               <button
@@ -135,7 +135,7 @@ export const DomainRouterManager: React.FC = () => {
                 </span>
               </button>
             ))}
-          {merchants
+          {(merchants || [])
             .filter((m) => m.customDomain)
             .map((m) => (
               <button

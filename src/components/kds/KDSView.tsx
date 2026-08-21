@@ -36,7 +36,7 @@ export const KDSView: React.FC = () => {
 
   // 过滤活跃状态订单 (待制作、制作中、待取餐)
   const activeOrders = useMemo(() => {
-    return orders.filter(
+    return (orders || []).filter(
       (o) => o.status === 'PENDING' || o.status === 'MAKING' || o.status === 'READY'
     );
   }, [orders]);

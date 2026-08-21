@@ -1,14 +1,42 @@
 import { MenuCategory, StaffUser, PermissionDefinition } from '../types';
 
 export const INITIAL_CATEGORIES: MenuCategory[] = [
-  { id: 'cat_milk_tea', name: '招牌鲜奶茶', icon: 'CupSoda', sortOrder: 1, isActive: true },
-  { id: 'cat_fruit_tea', name: '鲜果芝士茶', icon: 'Citrus', sortOrder: 2, isActive: true },
-  { id: 'cat_pure_tea', name: '原叶清心茶', icon: 'Leaf', sortOrder: 3, isActive: true },
-  { id: 'cat_coffee', name: '特调浓缩咖啡', icon: 'Coffee', sortOrder: 4, isActive: true },
-  { id: 'cat_fried', name: '金牌炸鸡小食', icon: 'Flame', sortOrder: 5, isActive: true },
-  { id: 'cat_fries', name: '香酥薯条炸物', icon: 'Sparkles', sortOrder: 6, isActive: true },
-  { id: 'cat_burger', name: '现烤手工汉堡', icon: 'Beef', sortOrder: 7, isActive: true },
-  { id: 'cat_panini', name: '热压帕尼尼卷', icon: 'Sandwich', sortOrder: 8, isActive: true },
+  {
+    id: 'cat_milk_tea',
+    storeId: 'store_default_01',
+    name: '招牌鲜奶茶',
+    icon: 'CupSoda',
+    sortOrder: 1,
+    isActive: true,
+    productCount: 2,
+  },
+  {
+    id: 'cat_burger',
+    storeId: 'store_default_01',
+    name: '现烤手工汉堡',
+    icon: 'Beef',
+    sortOrder: 2,
+    isActive: true,
+    productCount: 1,
+  },
+  {
+    id: 'cat_fried_snack',
+    storeId: 'store_default_01',
+    name: '金牌炸鸡小食',
+    icon: 'Flame',
+    sortOrder: 3,
+    isActive: true,
+    productCount: 1,
+  },
+  {
+    id: 'cat_pure_tea',
+    storeId: 'store_default_01',
+    name: '原叶清心茶',
+    icon: 'Leaf',
+    sortOrder: 4,
+    isActive: true,
+    productCount: 0,
+  },
 ];
 
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
@@ -49,33 +77,32 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 ];
 
 export const INITIAL_STAFF_USERS: StaffUser[] = [
-  // 1. 系统销售方 / 平台超级管理员 (卖系统的)
+  // 1. 平台最高权限超级管理员 (SaaS Platform Super Admin)
   {
-    id: 'staff_vendor_001',
-    name: '林总 (系统服务提供商)',
-    username: 'saas_vendor_lin',
+    id: 'staff_super_admin',
+    name: '超级管理员 (Super Admin)',
+    username: 'admin',
     role: 'SUPER_ADMIN',
-    storeId: 'store_bratislava_01',
+    storeId: 'store_paris_01',
     status: 'ACTIVE',
     pinCode: '8888',
     avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
     permissions: PERMISSION_DEFINITIONS.map(p => p.id),
   },
 
-  // 2. 商家账户 (管理单店或多店权限，严禁创建店铺)
+  // 2. 连锁商家 / 品牌主 (Merchant Brand Owner)
   {
-    id: 'staff_merchant_001',
-    name: '托马斯·诺瓦克 (商家负责人)',
-    username: 'merchant_novak',
+    id: 'staff_merchant_boss',
+    name: '多瑙品牌主 (Roger Boss)',
+    username: 'merchant_boss',
     role: 'MERCHANT',
-    merchantId: 'merchant_001',
-    storeId: 'store_prague_01',
-    accessibleStoreIds: ['store_prague_01', 'store_brno_02'],
+    merchantId: 'merchant_danube',
+    storeId: 'store_paris_01',
+    accessibleStoreIds: ['store_paris_01', 'store_berlin_01', 'store_prague_01'],
     status: 'ACTIVE',
-    pinCode: '6688',
+    pinCode: '6666',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
     permissions: [
-      'perm_store_manage',
       'perm_analytics_revenue',
       'perm_analytics_products',
       'perm_menu_view',
@@ -83,26 +110,22 @@ export const INITIAL_STAFF_USERS: StaffUser[] = [
       'perm_menu_create',
       'perm_cat_manage',
       'perm_sku_soldout',
-      'perm_staff_view',
-      'perm_staff_edit',
-      'perm_finance_view',
-      'perm_finance_audit',
-      'perm_order_create',
-      'perm_order_verify',
+      'perm_inventory_view',
+      'perm_inventory_operate',
+      'perm_store_manage',
     ],
   },
 
-  // 3. 店长 (当日销售数据，食材库存)
+  // 3. 门店店长 (Store Manager)
   {
-    id: 'staff_manager_001',
-    name: '陈雅欣 (布拉迪斯拉发店长)',
-    username: 'manager_chen',
+    id: 'staff_manager_pierre',
+    name: '巴黎旗舰店店长 (Pierre)',
+    username: 'manager_pierre',
     role: 'STORE_MANAGER',
-    merchantId: 'merchant_002',
-    storeId: 'store_bratislava_01',
+    storeId: 'store_paris_01',
     status: 'ACTIVE',
-    pinCode: '1688',
-    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&auto=format&fit=crop&q=80',
+    pinCode: '1111',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80',
     permissions: [
       'perm_today_sales_view',
       'perm_inventory_view',
@@ -111,65 +134,64 @@ export const INITIAL_STAFF_USERS: StaffUser[] = [
       'perm_sku_soldout',
       'perm_order_create',
       'perm_order_verify',
-      'perm_kds_bump',
-      'perm_expo_call',
       'perm_finance_view',
       'perm_finance_audit',
       'perm_staff_view',
     ],
   },
 
-  // 4. 吧台收银员
+  // 4. 后厨主厨 (Kitchen Chef)
   {
-    id: 'staff_cashier_001',
-    name: '张小峰 (吧台收银员)',
-    username: 'cashier_zhang',
-    role: 'CASHIER',
-    storeId: 'store_bratislava_01',
+    id: 'staff_chef_marco',
+    name: '后厨主厨 (Marco Chef)',
+    username: 'chef_marco',
+    role: 'CHEF',
+    storeId: 'store_paris_01',
     status: 'ACTIVE',
-    pinCode: '0101',
-    avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&auto=format&fit=crop&q=80',
+    pinCode: '2222',
+    avatar: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=100&auto=format&fit=crop&q=80',
     permissions: [
-      'perm_menu_view',
+      'perm_kds_bump',
       'perm_sku_soldout',
+      'perm_menu_view',
+      'perm_order_verify',
+    ],
+  },
+
+  // 5. 前台吧台收银员 (Front Cashier)
+  {
+    id: 'staff_cashier_emma',
+    name: '吧台收银员 (Emma Cashier)',
+    username: 'cashier_emma',
+    role: 'CASHIER',
+    storeId: 'store_paris_01',
+    status: 'ACTIVE',
+    pinCode: '3333',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
+    permissions: [
       'perm_order_create',
       'perm_order_verify',
-      'perm_finance_view',
-    ],
-  },
-
-  // 5. 后厨主厨
-  {
-    id: 'staff_chef_001',
-    name: '王大厨 (后厨主管)',
-    username: 'chef_wang',
-    role: 'CHEF',
-    storeId: 'store_bratislava_01',
-    status: 'ACTIVE',
-    pinCode: '0202',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80',
-    permissions: [
-      'perm_menu_view',
       'perm_sku_soldout',
-      'perm_kds_bump',
+      'perm_finance_view',
+      'perm_menu_view',
     ],
   },
 
-  // 6. Expo 打包员
+  // 6. 总控装配打包员 (Expo Packer)
   {
-    id: 'staff_expo_001',
-    name: '李小薇 (Expo打包员)',
-    username: 'expo_li',
+    id: 'staff_expo_lucas',
+    name: '打包总控员 (Lucas Expo)',
+    username: 'expo_lucas',
     role: 'EXPO_PACKER',
-    storeId: 'store_bratislava_01',
+    storeId: 'store_paris_01',
     status: 'ACTIVE',
-    pinCode: '0303',
-    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80',
+    pinCode: '4444',
+    avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=100&auto=format&fit=crop&q=80',
     permissions: [
-      'perm_menu_view',
-      'perm_kds_bump',
       'perm_expo_call',
       'perm_order_verify',
+      'perm_kds_bump',
+      'perm_menu_view',
     ],
   },
 ];

@@ -14,12 +14,12 @@ export const CallingScreen: React.FC = () => {
   const isLight = theme === 'light';
 
   // 制作中的订单 (PENDING 或 MAKING)
-  const preparingOrders = orders.filter(
+  const preparingOrders = (orders || []).filter(
     (o) => o.status === 'PENDING' || o.status === 'MAKING'
   );
 
   // 制作完成等待取餐的订单
-  const readyOrders = orders.filter((o) => o.status === 'READY');
+  const readyOrders = (orders || []).filter((o) => o.status === 'READY');
 
   const handleTestBroadcast = (code: string) => {
     sound.playCallingChime();

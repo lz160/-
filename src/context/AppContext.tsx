@@ -58,10 +58,10 @@ interface AppContextType {
   setAudioEnabled: (enabled: boolean) => void;
   setActiveOrderForTracking: (order: OrderMaster | null) => void;
   refreshOrders: () => Promise<void>;
-  fetchMenu: () => Promise<void>;
+  fetchMenu: (targetStoreId?: string) => Promise<void>;
   fetchMerchants: () => Promise<void>;
   fetchStores: () => Promise<void>;
-  fetchInventory: () => Promise<void>;
+  fetchInventory: (targetStoreId?: string) => Promise<void>;
   
   // Order Operations
   createOrder: (items: any[], customerPhone?: string, notes?: string) => Promise<any>;
@@ -82,7 +82,7 @@ interface AppContextType {
   toggleSkuSoldOut: (skuId: string, isSoldOut: boolean) => Promise<void>;
   
   // Category Admin CRUD
-  createCategory: (name: string, icon?: string, sortOrder?: number) => Promise<any>;
+  createCategory: (name: string, icon?: string, sortOrder?: number, targetStoreId?: string) => Promise<any>;
   updateCategory: (id: string, updates: Partial<MenuCategory>) => Promise<any>;
   deleteCategory: (id: string) => Promise<any>;
 
@@ -133,22 +133,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(INITIAL_INVENTORY_ITEMS);
   const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>(INITIAL_INVENTORY_LOGS);
 
-  // Active Role User (Default to Store Manager for quick review)
-  const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser>(INITIAL_STAFF_USERS[1]);
+  // Active Role User (Default to Super Admin)
+  const [currentStaffUser, setCurrentStaffUser] = useState<StaffUser>(INITIAL_STAFF_USERS[0]);
   const [theme, setTheme] = useState<'light' | 'dark'>('light'); // Requested Pure Light Style
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>('zh');
 
   const [queueSummary, setQueueSummary] = useState<QueueSummary>({
-    waitingCups: 4,
-    makingOrdersCount: 2,
-    readyOrdersCount: 1,
-    completedTodayCount: 2,
-    avgWaitTimeMinutes: 5,
-    currentCallingCodes: ['C002'],
+    waitingCups: 0,
+    makingOrdersCount: 0,
+    readyOrdersCount: 0,
+    completedTodayCount: 0,
+    avgWaitTimeMinutes: 0,
+    currentCallingCodes: [],
   });
   const [wsConnected, setWsConnected] = useState(false);
   const [activeOrderForTracking, setActiveOrderForTracking] = useState<OrderMaster | null>(null);
-  const [lastCalledCode, setLastCalledCode] = useState<string | null>('C002');
+  const [lastCalledCode, setLastCalledCode] = useState<string | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
 
   // Get current merchant associated with currentStore or currentStaffUser
@@ -202,9 +202,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentStore.id]);
 
-  const fetchMenu = useCallback(async () => {
+  const fetchMenu = useCallback(async (targetStoreId?: string) => {
     try {
-      const res = await fetch('/api/menu');
+      const activeStoreId = targetStoreId || currentStore.id || 'store_default_01';
+      const res = await fetch(`/api/menu?storeId=${encodeURIComponent(activeStoreId)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.products) setProducts(data.products);
@@ -214,7 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err) {
       console.error('Failed to fetch menu:', err);
     }
-  }, []);
+  }, [currentStore.id]);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -478,27 +479,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Category Admin CRUD Handlers
-  const createCategory = async (name: string, icon = 'CupSoda', sortOrder?: number) => {
+  const createCategory = async (name: string, icon = 'CupSoda', sortOrder?: number, targetStoreId?: string) => {
+    const storeId = targetStoreId || currentStore.id || 'store_default_01';
     const res = await fetch('/api/admin/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, icon, sortOrder }),
+      body: JSON.stringify({ name, icon, sortOrder, storeId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '添加分类失败');
-    await fetchMenu();
+    await fetchMenu(storeId);
     return data;
   };
 
   const updateCategory = async (id: string, updates: Partial<MenuCategory>) => {
+    const storeId = updates.storeId || currentStore.id || 'store_default_01';
     const res = await fetch(`/api/admin/categories/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify({ ...updates, storeId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '更新分类失败');
-    await fetchMenu();
+    await fetchMenu(storeId);
     return data;
   };
 
@@ -508,32 +511,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '删除分类失败');
-    await fetchMenu();
+    await fetchMenu(currentStore.id);
     return data;
   };
 
   // Product Admin CRUD Handlers
   const createProduct = async (product: Partial<ProductSKU>) => {
+    const storeId = product.storeId || currentStore.id || 'store_default_01';
     const res = await fetch('/api/admin/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(product),
+      body: JSON.stringify({ ...product, storeId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '创建商品失败');
-    await fetchMenu();
+    await fetchMenu(storeId);
     return data;
   };
 
   const updateProduct = async (id: string, updates: Partial<ProductSKU>) => {
+    const storeId = updates.storeId || currentStore.id || 'store_default_01';
     const res = await fetch(`/api/admin/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify({ ...updates, storeId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '更新商品失败');
-    await fetchMenu();
+    await fetchMenu(storeId);
     return data;
   };
 
@@ -543,7 +548,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '删除商品失败');
-    await fetchMenu();
+    await fetchMenu(currentStore.id);
     return data;
   };
 

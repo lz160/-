@@ -102,12 +102,12 @@ export const ProductManager: React.FC = () => {
     }
   };
 
-  const filteredList = products.filter((p) => {
+  const filteredList = (products || []).filter((p) => {
     const matchCat = filterCategory === 'ALL' || p.category === filterCategory;
     const matchQuery =
       !searchQuery ||
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchQuery.toLowerCase());
+      p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.category?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCat && matchQuery;
   });
 
@@ -146,10 +146,10 @@ export const ProductManager: React.FC = () => {
               onChange={(e) => setFilterCategory(e.target.value)}
               className="text-xs px-3 py-1.5 rounded-xl border bg-stone-50 dark:bg-stone-950 border-stone-300 dark:border-stone-700 font-medium"
             >
-              <option value="ALL">全部分类 ({products.length})</option>
-              {categories.map((c) => (
+              <option value="ALL">全部分类 ({(products || []).length})</option>
+              {(categories || []).map((c) => (
                 <option key={c.id} value={c.name}>
-                  {c.name} ({products.filter((p) => p.category === c.name).length})
+                  {c.name} ({(products || []).filter((p) => p.category === c.name).length})
                 </option>
               ))}
             </select>

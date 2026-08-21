@@ -56,12 +56,12 @@ export const MerchantManager: React.FC = () => {
 
   const canManageMerchants = hasPermission('perm_merchant_manage');
 
-  const filteredMerchants = merchants.filter((m) => {
+  const filteredMerchants = (merchants || []).filter((m) => {
     const matchSearch =
       !searchQuery ||
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.contactPerson?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (m.customDomain && m.customDomain.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchSearch;
   });
@@ -184,7 +184,7 @@ export const MerchantManager: React.FC = () => {
       {/* 商家卡片列表 */}
       <div className="flex-1 p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filteredMerchants.map((merchant) => {
-          const assignedStores = stores.filter((s) => merchant.assignedStoreIds.includes(s.id));
+          const assignedStores = (stores || []).filter((s) => merchant.assignedStoreIds?.includes(s.id));
           return (
             <div
               key={merchant.id}

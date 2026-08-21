@@ -57,11 +57,11 @@ export const StoreManager: React.FC = () => {
   const canCreateStore = hasPermission('perm_store_create');
   const canManageStore = hasPermission('perm_store_manage');
 
-  const filteredStores = stores.filter((s) => {
+  const filteredStores = (stores || []).filter((s) => {
     const matchSearch =
       !searchQuery ||
-      s.storeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.storeName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      s.address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (s.merchantName && s.merchantName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (s.customDomain && s.customDomain.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchSearch;

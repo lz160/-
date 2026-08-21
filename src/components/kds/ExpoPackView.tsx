@@ -28,14 +28,14 @@ export const ExpoPackView: React.FC = () => {
   const [selectedOrderForSticker, setSelectedOrderForSticker] = useState<OrderMaster | null>(null);
 
   // 活跃后厨订单
-  const activeOrders = orders.filter(
+  const activeOrders = (orders || []).filter(
     (o) => o.status === 'PENDING' || o.status === 'MAKING' || o.status === 'READY'
   );
 
-  const filteredOrders = activeOrders.filter(
+  const filteredOrders = (activeOrders || []).filter(
     (o) =>
-      o.pickupCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.orderNo.toLowerCase().includes(searchQuery.toLowerCase())
+      o.pickupCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      o.orderNo?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleCall = async (order: OrderMaster) => {

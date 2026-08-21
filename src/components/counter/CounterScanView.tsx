@@ -188,7 +188,7 @@ export const CounterScanView: React.FC = () => {
               {/* 快捷取餐码备选 */}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-stone-100">
                 <span className="text-[11px] text-stone-400 font-medium">当前活跃取餐单快捷填入:</span>
-                {orders
+                {(orders || [])
                   .filter((o) => o.status === 'READY' || o.status === 'MAKING')
                   .slice(0, 5)
                   .map((o) => (

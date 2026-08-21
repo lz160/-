@@ -42,10 +42,10 @@ export const CustomerH5View: React.FC = () => {
   const [unpaidOrderToCheckout, setUnpaidOrderToCheckout] = useState<any | null>(null);
 
   // 提取唯一分类列表
-  const categories = Array.from(new Set(products.map((p) => p.category)));
+  const categories = Array.from(new Set((products || []).map((p) => p.category)));
 
   // 过滤当前选中分类的商品
-  const filteredProducts = products.filter((p) => p.category === activeCategory);
+  const filteredProducts = (products || []).filter((p) => p.category === activeCategory);
 
   // 购物车计算
   const cartTotalAmount = cart.reduce((sum, item) => sum + item.itemTotalPrice, 0);

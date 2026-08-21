@@ -19,6 +19,7 @@ import {
 export const RolePermissionManager: React.FC = () => {
   const {
     staffUsers,
+    stores,
     permissionsList,
     currentStaffUser,
     setCurrentStaffUser,
@@ -39,6 +40,7 @@ export const RolePermissionManager: React.FC = () => {
     username: '',
     role: 'CASHIER' as StaffRole,
     pinCode: '1234',
+    storeId: stores[0]?.id || 'store_paris_01',
   });
 
   const [feedback, setFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -55,10 +57,11 @@ export const RolePermissionManager: React.FC = () => {
       return;
     }
 
-    const hasIt = selectedStaff.permissions.includes(permId);
+    const hasIt = selectedStaff.permissions?.includes(permId);
+    const currentPerms = selectedStaff.permissions || [];
     const newPerms = hasIt
-      ? selectedStaff.permissions.filter((p) => p !== permId)
-      : [...selectedStaff.permissions, permId];
+      ? currentPerms.filter((p) => p !== permId)
+      : [...currentPerms, permId];
 
     try {
       await updateStaffUser(selectedStaff.id, { permissions: newPerms });
@@ -91,11 +94,12 @@ export const RolePermissionManager: React.FC = () => {
         username: newStaffForm.username,
         role: newStaffForm.role,
         pinCode: newStaffForm.pinCode,
+        storeId: newStaffForm.storeId,
         permissions: initialPerms,
       });
 
       setIsAddStaffOpen(false);
-      setNewStaffForm({ name: '', username: '', role: 'CASHIER', pinCode: '1234' });
+      setNewStaffForm({ name: '', username: '', role: 'CASHIER', pinCode: '1234', storeId: stores[0]?.id || 'store_paris_01' });
       if (res.staff) setSelectedStaff(res.staff);
       showToast('新增员工账号成功');
     } catch (err: any) {
@@ -206,11 +210,23 @@ export const RolePermissionManager: React.FC = () => {
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     user.role === 'SUPER_ADMIN'
                       ? 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                      : user.role === 'MERCHANT'
+                      ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
                       : user.role === 'STORE_MANAGER'
                       ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                       : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300'
                   }`}>
-                    {user.role === 'SUPER_ADMIN' ? '超级管理员' : user.role === 'STORE_MANAGER' ? '店长' : user.role === 'CASHIER' ? '吧台收银' : user.role === 'CHEF' ? '后厨厨师' : 'Expo打包'}
+                    {user.role === 'SUPER_ADMIN'
+                      ? '超级管理员'
+                      : user.role === 'MERCHANT'
+                      ? '连锁商家'
+                      : user.role === 'STORE_MANAGER'
+                      ? '店长'
+                      : user.role === 'CASHIER'
+                      ? '吧台收银'
+                      : user.role === 'CHEF'
+                      ? '后厨主厨'
+                      : 'Expo打包'}
                   </span>
                 </div>
 
@@ -280,7 +296,7 @@ export const RolePermissionManager: React.FC = () => {
         {/* Permissions Grid Grouped by Category */}
         <div className="flex-1 overflow-y-auto mt-4 space-y-5 pr-1">
           {permissionCategories.map((group) => {
-            const groupPerms = permissionsList.filter((p) => p.category === group.key);
+            const groupPerms = (permissionsList || []).filter((p) => p.category === group.key);
             if (groupPerms.length === 0) return null;
 
             return (
@@ -293,7 +309,7 @@ export const RolePermissionManager: React.FC = () => {
                   {groupPerms.map((perm) => {
                     const isGranted =
                       selectedStaff?.role === 'SUPER_ADMIN' ||
-                      selectedStaff?.permissions.includes(perm.id);
+                      selectedStaff?.permissions?.includes(perm.id);
 
                     return (
                       <div
@@ -388,6 +404,7 @@ export const RolePermissionManager: React.FC = () => {
                     onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value as StaffRole })}
                     className="w-full text-xs px-3 py-2 rounded-xl border bg-stone-50 dark:bg-stone-950 border-stone-300 dark:border-stone-700 font-medium"
                   >
+                    <option value="MERCHANT">连锁商家 (Merchant Boss)</option>
                     <option value="STORE_MANAGER">{t('roleStoreManager')}</option>
                     <option value="CASHIER">{t('roleCashier')}</option>
                     <option value="CHEF">{t('roleChef')}</option>
@@ -396,15 +413,30 @@ export const RolePermissionManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-stone-500 mb-1">快速登录 PIN 码</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    value={newStaffForm.pinCode}
-                    onChange={(e) => setNewStaffForm({ ...newStaffForm, pinCode: e.target.value })}
-                    className="w-full text-xs px-3 py-2 rounded-xl border bg-stone-50 dark:bg-stone-950 border-stone-300 dark:border-stone-700 font-mono tracking-widest text-center font-bold"
-                  />
+                  <label className="block text-xs font-bold text-stone-500 mb-1">所属门店</label>
+                  <select
+                    value={newStaffForm.storeId}
+                    onChange={(e) => setNewStaffForm({ ...newStaffForm, storeId: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl border bg-stone-50 dark:bg-stone-950 border-stone-300 dark:border-stone-700 font-medium"
+                  >
+                    {(stores || []).map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.storeName} ({s.currency})
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-500 mb-1">快速登录 PIN 码 (4位数字)</label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  value={newStaffForm.pinCode}
+                  onChange={(e) => setNewStaffForm({ ...newStaffForm, pinCode: e.target.value })}
+                  className="w-full text-xs px-3 py-2 rounded-xl border bg-stone-50 dark:bg-stone-950 border-stone-300 dark:border-stone-700 font-mono tracking-widest text-center font-bold"
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-stone-200 dark:border-stone-800">

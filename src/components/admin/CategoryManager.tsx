@@ -88,7 +88,7 @@ export const CategoryManager: React.FC = () => {
   };
 
   const handleDeleteCategory = async (cat: MenuCategory) => {
-    const attachedCount = products.filter(p => p.category === cat.name).length;
+    const attachedCount = (products || []).filter(p => p.category === cat.name).length;
     if (attachedCount > 0) {
       if (!confirm(`分类【${cat.name}】下还有 ${attachedCount} 个关联商品，确定删除分类吗？`)) {
         return;
@@ -120,7 +120,7 @@ export const CategoryManager: React.FC = () => {
     }
   };
 
-  const currentCategoryProducts = products.filter(p => p.category === selectedCategoryName);
+  const currentCategoryProducts = (products || []).filter(p => p.category === selectedCategoryName);
 
   return (
     <div className={`h-full flex flex-col md:flex-row gap-4 p-4 overflow-hidden ${theme === 'light' ? 'bg-stone-50 text-stone-800' : 'bg-stone-950 text-stone-100'}`}>
@@ -213,10 +213,10 @@ export const CategoryManager: React.FC = () => {
 
         {/* Categories List */}
         <div className="flex-1 overflow-y-auto mt-3 space-y-1.5 pr-1">
-          {categories.map((cat) => {
+          {(categories || []).map((cat) => {
             const isSelected = selectedCategoryName === cat.name;
             const isEditing = editingCatId === cat.id;
-            const prodCount = products.filter(p => p.category === cat.name).length;
+            const prodCount = (products || []).filter(p => p.category === cat.name).length;
 
             if (isEditing) {
               return (

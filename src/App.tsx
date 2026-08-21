@@ -6,6 +6,7 @@ import { ExpoPackView } from './components/kds/ExpoPackView';
 import { CallingScreen } from './components/calling/CallingScreen';
 import { CounterScanView } from './components/counter/CounterScanView';
 import { SaaSAdminDashboard } from './components/admin/SaaSAdminDashboard';
+import { UnifiedMenuWorkshop } from './components/admin/UnifiedMenuWorkshop';
 import { ArchitectureSpecView } from './components/docs/ArchitectureSpecView';
 import { SUPPORTED_LANGUAGES, SupportedLanguage } from './i18n/translations';
 import {
@@ -32,10 +33,12 @@ import {
   ChevronDown,
   UserCheck,
   Coins,
+  UtensilsCrossed,
 } from 'lucide-react';
 
 type ViewMode =
   | 'SAAS_ADMIN'
+  | 'MENU_WORKSHOP'
   | 'CUSTOMER_H5'
   | 'COUNTER_SCAN'
   | 'KDS_STATIONS'
@@ -158,11 +161,15 @@ const MainLayout: React.FC = () => {
                 <span className="max-w-[120px] truncate">{currentStaffUser.name}</span>
                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-200 text-amber-950 font-bold">
                   {currentStaffUser.role === 'SUPER_ADMIN'
-                    ? '卖系统的(Vendor)'
+                    ? '平台超级管理员'
                     : currentStaffUser.role === 'MERCHANT'
-                    ? '商家(Merchant)'
+                    ? '商家'
                     : currentStaffUser.role === 'STORE_MANAGER'
-                    ? '店长(Manager)'
+                    ? '店长'
+                    : currentStaffUser.role === 'CHEF'
+                    ? '主厨'
+                    : currentStaffUser.role === 'EXPO_PACKER'
+                    ? '打包员'
                     : '收银员'}
                 </span>
                 <ChevronDown className="w-3 h-3 text-amber-700" />
@@ -180,6 +187,19 @@ const MainLayout: React.FC = () => {
                       onClick={() => {
                         setCurrentStaffUser(u);
                         setIsRoleMenuOpen(false);
+                        if (u.role === 'SUPER_ADMIN') {
+                          setCurrentView('SAAS_ADMIN');
+                        } else if (u.role === 'MERCHANT') {
+                          setCurrentView('MENU_WORKSHOP');
+                        } else if (u.role === 'STORE_MANAGER') {
+                          setCurrentView('SAAS_ADMIN');
+                        } else if (u.role === 'CASHIER') {
+                          setCurrentView('COUNTER_SCAN');
+                        } else if (u.role === 'CHEF') {
+                          setCurrentView('KDS_STATIONS');
+                        } else if (u.role === 'EXPO_PACKER') {
+                          setCurrentView('EXPO_PACK');
+                        }
                       }}
                       className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition ${
                         currentStaffUser.id === u.id
@@ -188,19 +208,38 @@ const MainLayout: React.FC = () => {
                       }`}
                     >
                       <div className="text-left">
-                        <div className="font-bold">{u.name}</div>
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>{u.name}</span>
+                          {currentStaffUser.id === u.id && (
+                            <span className="text-[9px] px-1 rounded bg-stone-950 text-white font-mono">当前</span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-stone-400">
                           {u.role === 'SUPER_ADMIN'
-                            ? 'SaaS总服务商 / 创建商家与分配店铺'
+                            ? '服务商超管 / 权限·账户创建·舰队·大盘'
                             : u.role === 'MERCHANT'
-                            ? '商家账户 / 营业额与商品销量分析'
+                            ? '连锁商家 / 菜品配方BOM与多店销售'
                             : u.role === 'STORE_MANAGER'
-                            ? '店长 / 当日销售数据与食材库存'
-                            : '收银操作员'}
+                            ? '店长 / 当日销售与食材库存'
+                            : u.role === 'CHEF'
+                            ? '后厨主厨 / KDS出餐消单'
+                            : u.role === 'EXPO_PACKER'
+                            ? '打包员 / 总控打包叫号'
+                            : '收银员 / 吧台点单核销'}
                         </div>
                       </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-800 font-mono shrink-0 ml-1">
-                        {u.role}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-200 text-stone-800 font-bold shrink-0 ml-1">
+                        {u.role === 'SUPER_ADMIN'
+                          ? '超管'
+                          : u.role === 'MERCHANT'
+                          ? '商家'
+                          : u.role === 'STORE_MANAGER'
+                          ? '店长'
+                          : u.role === 'CHEF'
+                          ? '主厨'
+                          : u.role === 'EXPO_PACKER'
+                          ? '打包'
+                          : '收银'}
                       </span>
                     </button>
                   ))}
@@ -224,6 +263,22 @@ const MainLayout: React.FC = () => {
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>{t('saasAdmin')}</span>
+            </button>
+
+            {/* Menu & Recipe BOM Workshop */}
+            <button
+              id="nav-menu-workshop-btn"
+              type="button"
+              onClick={() => setCurrentView('MENU_WORKSHOP')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition shrink-0 ${
+                currentView === 'MENU_WORKSHOP'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <ChefHat className="w-3.5 h-3.5" />
+              <span>菜品与配方工坊</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-white/20 font-bold">BOM</span>
             </button>
 
             {/* Split Sandbox */}
@@ -412,6 +467,15 @@ const MainLayout: React.FC = () => {
         {currentView === 'SAAS_ADMIN' && (
           <div className="w-full h-full overflow-hidden">
             <SaaSAdminDashboard />
+          </div>
+        )}
+
+        {/* VIEW: Menu & Recipe BOM Workshop */}
+        {currentView === 'MENU_WORKSHOP' && (
+          <div className="w-full h-full overflow-y-auto p-4 sm:p-6 bg-stone-100 dark:bg-zinc-950">
+            <div className="max-w-7xl mx-auto">
+              <UnifiedMenuWorkshop />
+            </div>
           </div>
         )}
 

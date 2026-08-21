@@ -26,7 +26,11 @@ type ManagerTab = 'TODAY_SALES' | 'INVENTORY_STOCK';
 
 export const StoreManagerDailyView: React.FC = () => {
   const {
+    stores,
     currentStore,
+    setCurrentStore,
+    currentMerchant,
+    currentStaffUser,
     orders,
     inventoryItems,
     inventoryLogs,
@@ -35,6 +39,18 @@ export const StoreManagerDailyView: React.FC = () => {
     formatPrice,
     t,
   } = useApp();
+
+  const isMerchant = currentStaffUser?.role === 'MERCHANT';
+  const isSuperAdmin = currentStaffUser?.role === 'SUPER_ADMIN';
+
+  // Filter accessible stores
+  const accessibleStores = useMemo(() => {
+    if (isSuperAdmin) return stores || [];
+    if (isMerchant && currentMerchant) {
+      return (stores || []).filter((s) => currentMerchant.assignedStoreIds?.includes(s.id));
+    }
+    return stores || [];
+  }, [stores, isSuperAdmin, isMerchant, currentMerchant]);
 
   const [activeTab, setActiveTab] = useState<ManagerTab>('TODAY_SALES');
   const [inventorySearch, setInventorySearch] = useState('');
@@ -70,23 +86,23 @@ export const StoreManagerDailyView: React.FC = () => {
   // Calculate Today's Sales from orders
   const todayOrders = useMemo(() => {
     const startOfToday = new Date().setHours(0, 0, 0, 0);
-    return orders.filter((o) => o.createdAt >= startOfToday && o.paymentStatus === 'PAID');
+    return (orders || []).filter((o) => o.createdAt >= startOfToday && o.paymentStatus === 'PAID');
   }, [orders]);
 
   const todayRevenue = useMemo(() => {
-    return todayOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    return todayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   }, [todayOrders]);
 
   const todayCashRevenue = useMemo(() => {
     return todayOrders
       .filter((o) => o.paymentMethod === 'CASH')
-      .reduce((sum, o) => sum + o.totalAmount, 0);
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   }, [todayOrders]);
 
   const todayCardRevenue = useMemo(() => {
     return todayOrders
       .filter((o) => o.paymentMethod !== 'CASH')
-      .reduce((sum, o) => sum + o.totalAmount, 0);
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   }, [todayOrders]);
 
   const todayCompletedCount = useMemo(() => {
@@ -95,19 +111,20 @@ export const StoreManagerDailyView: React.FC = () => {
 
   // Filter Inventory
   const filteredInventory = useMemo(() => {
-    return inventoryItems.filter((item) => {
+    return (inventoryItems || []).filter((item) => {
       const matchCat = inventoryCategory === 'ALL' || item.category === inventoryCategory;
       const matchSearch =
         !inventorySearch ||
-        item.name.toLowerCase().includes(inventorySearch.toLowerCase()) ||
-        item.categoryName.toLowerCase().includes(inventorySearch.toLowerCase());
+        item.name?.toLowerCase().includes(inventorySearch.toLowerCase()) ||
+        item.categoryName?.toLowerCase().includes(inventorySearch.toLowerCase()) ||
+        item.category?.toLowerCase().includes(inventorySearch.toLowerCase());
       return matchCat && matchSearch;
     });
   }, [inventoryItems, inventoryCategory, inventorySearch]);
 
   // Low stock alert items count
   const lowStockCount = useMemo(() => {
-    return inventoryItems.filter((i) => i.status === 'LOW' || i.status === 'CRITICAL').length;
+    return (inventoryItems || []).filter((i) => i.status === 'LOW' || i.status === 'CRITICAL').length;
   }, [inventoryItems]);
 
   const handleOpenAdjust = (item: InventoryItem, type: 'RESTOCK' | 'WASTE' | 'CALIBRATE') => {
@@ -188,13 +205,38 @@ export const StoreManagerDailyView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black text-stone-900">{t('storeManagerDaily')}</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
-                {currentStore.storeName} ({currentStore.currency})
-              </span>
+              <h2 className="text-sm font-black text-stone-900">
+                {isMerchant ? '连锁门店库存与销售台账' : t('storeManagerDaily')}
+              </h2>
+              {/* Store Switcher for Multi-store merchant or super admin */}
+              {accessibleStores.length > 1 ? (
+                <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-bold text-amber-800">当前门店:</span>
+                  <select
+                    value={currentStore.id}
+                    onChange={(e) => {
+                      const found = accessibleStores.find((s) => s.id === e.target.value);
+                      if (found) setCurrentStore(found);
+                    }}
+                    className="bg-transparent text-[11px] font-bold text-amber-900 focus:outline-none cursor-pointer"
+                  >
+                    {accessibleStores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.storeName} ({s.currency})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold">
+                  {currentStore.storeName} ({currentStore.currency})
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-stone-400">
-              店长核心工作台：实时掌控当日营业销售实况与后厨食材物料库存台账
+              {isMerchant
+                ? '商家全店库存工作台：支持全门店原材料库存查看、快速采购入库、实物盘点校准与流水审计'
+                : '店长核心工作台：实时掌控当日营业销售实况与后厨食材物料库存台账'}
             </p>
           </div>
         </div>
@@ -227,7 +269,7 @@ export const StoreManagerDailyView: React.FC = () => {
             }`}
           >
             <Package className="w-3.5 h-3.5" />
-            <span>{t('ingredientInventory')}</span>
+            <span>{isMerchant ? '食材物料库存 (查看·入库·盘点)' : t('ingredientInventory')}</span>
             {lowStockCount > 0 && (
               <span className="text-[10px] px-1.5 rounded bg-rose-500 text-white font-mono">
                 {lowStockCount}告急

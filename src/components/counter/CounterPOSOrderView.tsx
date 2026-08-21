@@ -45,19 +45,19 @@ export const CounterPOSOrderView: React.FC = () => {
 
   // 分类列表
   const categories = useMemo(() => {
-    const set = new Set(products.map((p) => p.category));
+    const set = new Set((products || []).map((p) => p.category));
     return ['ALL', ...Array.from(set)];
   }, [products]);
 
   // 过滤商品
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return (products || []).filter((p) => {
       const matchCat = selectedCategory === 'ALL' || p.category === selectedCategory;
       const matchSearch =
         !searchQuery ||
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchQuery.toLowerCase());
+        p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchSearch;
     });
   }, [products, selectedCategory, searchQuery]);

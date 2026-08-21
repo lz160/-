@@ -30,7 +30,7 @@ export const ProductModifierModal: React.FC<Props> = ({
   const isLight = theme === 'light';
 
   const relevantGroups = useMemo(() => {
-    return modifierGroups.filter((g) => sku.modifierGroupIds.includes(g.id));
+    return (modifierGroups || []).filter((g) => sku?.modifierGroupIds?.includes(g.id));
   }, [sku, modifierGroups]);
 
   // 初始选项映射：groupId -> 选中的 itemIds 数组

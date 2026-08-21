@@ -33,11 +33,21 @@ export interface ModifierGroup {
   items: ModifierItem[];
 }
 
+export interface RecipeBOMItem {
+  inventoryItemId: string;   // 关联的原料ID
+  inventoryItemName: string; // 原料名称
+  quantity: number;          // 单份消耗数量 (如 200)
+  unit: string;              // 单位 (如 ml, g, 个)
+  unitCost?: number;         // 单位成本
+}
+
 export interface ProductSKU {
   id: string;
+  storeId?: string;          // 所属店铺ID（单店隔离）
   productId?: string;
   name: string;
   category: string;
+  categoryId?: string;
   basePrice: number;
   image: string;
   description: string;
@@ -48,6 +58,9 @@ export interface ProductSKU {
   isSoldOut?: boolean;
   isRecommended?: boolean;
   tags?: string[];
+  recipeBOM?: RecipeBOMItem[]; // 原料到成品配方构成 (BOM)
+  estimatedCost?: number;      // 理论原料成本
+  grossMargin?: number;        // 毛利率 %
   salesCount?: number; // Cumulative sales volume
   salesRevenue?: number; // Cumulative sales amount
 }
@@ -224,6 +237,7 @@ export interface StoreEntity {
 
 export interface MenuCategory {
   id: string;
+  storeId?: string;
   name: string;
   icon?: string;
   sortOrder: number;

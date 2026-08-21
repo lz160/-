@@ -29,7 +29,7 @@ const PORT = 3000;
 app.use(express.json());
 
 // In-Memory Database & State Management
-let dailySequenceCount = 12;
+let dailySequenceCount = 0;
 let ordersDb: OrderMaster[] = [];
 let soldOutSkuIds = new Set<string>();
 let productsDb: ProductSKU[] = [...INITIAL_PRODUCTS];
@@ -48,339 +48,6 @@ function generatePickupCode(channel: string = 'QR_H5'): string {
   const numStr = dailySequenceCount.toString().padStart(3, '0');
   return `${prefix}${numStr}`;
 }
-
-// Seed initial orders across today and historical days for realistic analytics
-function initSeedOrders() {
-  const now = Date.now();
-  const dayMs = 86400000;
-
-  // TODAY Orders (Bratislava - EUR)
-  ordersDb.push({
-    id: 'ord_today_001',
-    storeId: 'store_bratislava_01',
-    merchantId: 'merchant_002',
-    orderNo: 'ORD' + (now - 1200000),
-    pickupCode: 'A001',
-    channel: 'QR_H5',
-    status: 'COMPLETED',
-    paymentStatus: 'PAID',
-    paymentMethod: 'STRIPE_CARD',
-    currency: 'EUR',
-    currencySymbol: '€',
-    totalAmount: 18.50,
-    itemsCount: 2,
-    items: [
-      {
-        itemId: 'item_t1_1',
-        orderId: 'ord_today_001',
-        skuId: 'sku_tea_01',
-        productName: '幽兰幽香・生酪鲜奶茶',
-        category: '招牌鲜奶茶',
-        quantity: 1,
-        unitPrice: 5.50,
-        totalPrice: 5.50,
-        targetStationId: 'station_bar',
-        selectedModifiers: [
-          { groupId: 'mod_sweetness', groupName: '甜度', itemId: 'sweet_70', itemName: '七分甜 (70%)', price: 0 },
-          { groupId: 'mod_temperature', groupName: '温度', itemId: 'ice_less', itemName: '少冰 (推荐)', price: 0 },
-        ],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 45,
-      },
-      {
-        itemId: 'item_t1_2',
-        orderId: 'ord_today_001',
-        skuId: 'sku_burger_01',
-        productName: '手打双层安格斯厚牛芝士堡',
-        category: '现烤手工汉堡',
-        quantity: 1,
-        unitPrice: 13.00,
-        totalPrice: 13.00,
-        targetStationId: 'station_grill',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 120,
-      }
-    ],
-    createdAt: now - 900000,
-    paidAt: now - 890000,
-    readyAt: now - 500000,
-    completedAt: now - 200000,
-    estimatedWaitMinutes: 6,
-    queuePosition: 0,
-  });
-
-  ordersDb.push({
-    id: 'ord_today_002',
-    storeId: 'store_bratislava_01',
-    merchantId: 'merchant_002',
-    orderNo: 'POS' + (now - 600000),
-    pickupCode: 'C002',
-    channel: 'COUNTER_POS',
-    status: 'READY',
-    paymentStatus: 'PAID',
-    paymentMethod: 'CASH',
-    cashDetails: { receivedAmount: 20.00, changeAmount: 6.50 },
-    currency: 'EUR',
-    currencySymbol: '€',
-    totalAmount: 13.50,
-    itemsCount: 2,
-    items: [
-      {
-        itemId: 'item_t2_1',
-        orderId: 'ord_today_002',
-        skuId: 'sku_fry_01',
-        productName: '金牌黄金蒜香脆皮炸鸡 (2块)',
-        category: '金牌炸鸡小食',
-        quantity: 1,
-        unitPrice: 8.50,
-        totalPrice: 8.50,
-        targetStationId: 'station_fryer',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 90,
-      },
-      {
-        itemId: 'item_t2_2',
-        orderId: 'ord_today_002',
-        skuId: 'sku_fry_02',
-        productName: '黄金粗薯条配黑松露风味酱',
-        category: '香酥薯条炸物',
-        quantity: 1,
-        unitPrice: 5.00,
-        totalPrice: 5.00,
-        targetStationId: 'station_fryer',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 50,
-      }
-    ],
-    createdAt: now - 600000,
-    paidAt: now - 590000,
-    readyAt: now - 60000,
-    estimatedWaitMinutes: 4,
-    queuePosition: 0,
-  });
-
-  ordersDb.push({
-    id: 'ord_today_003',
-    storeId: 'store_bratislava_01',
-    merchantId: 'merchant_002',
-    orderNo: 'POS' + (now - 200000),
-    pickupCode: 'C003',
-    channel: 'COUNTER_POS',
-    status: 'MAKING',
-    paymentStatus: 'PAID',
-    paymentMethod: 'POS_CARD',
-    cardDetails: { cardLast4: '4242', authCode: 'AUTH_89123' },
-    currency: 'EUR',
-    currencySymbol: '€',
-    totalAmount: 16.50,
-    itemsCount: 2,
-    items: [
-      {
-        itemId: 'item_t3_1',
-        orderId: 'ord_today_003',
-        skuId: 'sku_tea_02',
-        productName: '茉莉初雪・清心白月光',
-        category: '招牌鲜奶茶',
-        quantity: 1,
-        unitPrice: 4.50,
-        totalPrice: 4.50,
-        targetStationId: 'station_bar',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 40,
-      },
-      {
-        itemId: 'item_t3_2',
-        orderId: 'ord_today_003',
-        skuId: 'sku_burger_01',
-        productName: '手打双层安格斯厚牛芝士堡',
-        category: '现烤手工汉堡',
-        quantity: 1,
-        unitPrice: 12.00,
-        totalPrice: 12.00,
-        targetStationId: 'station_grill',
-        selectedModifiers: [],
-        stationStatus: 'MAKING',
-        prepTimeSeconds: 120,
-        startedAt: now - 100000,
-      }
-    ],
-    createdAt: now - 200000,
-    paidAt: now - 190000,
-    estimatedWaitMinutes: 5,
-    queuePosition: 1,
-  });
-
-  // TODAY Orders (Prague - CZK)
-  ordersDb.push({
-    id: 'ord_prague_001',
-    storeId: 'store_prague_01',
-    merchantId: 'merchant_001',
-    orderNo: 'PRG' + (now - 1500000),
-    pickupCode: 'A010',
-    channel: 'QR_H5',
-    status: 'COMPLETED',
-    paymentStatus: 'PAID',
-    paymentMethod: 'STRIPE_CARD',
-    currency: 'CZK',
-    currencySymbol: 'Kč',
-    totalAmount: 380,
-    itemsCount: 3,
-    items: [
-      {
-        itemId: 'item_p1_1',
-        orderId: 'ord_prague_001',
-        skuId: 'sku_tea_01',
-        productName: '幽兰幽香・生酪鲜奶茶',
-        category: '招牌鲜奶茶',
-        quantity: 2,
-        unitPrice: 130,
-        totalPrice: 260,
-        targetStationId: 'station_bar',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 45,
-      },
-      {
-        itemId: 'item_p1_2',
-        orderId: 'ord_prague_001',
-        skuId: 'sku_fry_02',
-        productName: '黄金粗薯条配黑松露风味酱',
-        category: '香酥薯条炸物',
-        quantity: 1,
-        unitPrice: 120,
-        totalPrice: 120,
-        targetStationId: 'station_fryer',
-        selectedModifiers: [],
-        stationStatus: 'DONE',
-        prepTimeSeconds: 50,
-      }
-    ],
-    createdAt: now - 1500000,
-    paidAt: now - 1490000,
-    readyAt: now - 1200000,
-    completedAt: now - 1000000,
-    estimatedWaitMinutes: 5,
-    queuePosition: 0,
-  });
-
-  // Historical Orders (Yesterday and past days)
-  const historicalDates = [1, 2, 3, 5, 7, 10, 14, 20, 25];
-  historicalDates.forEach((daysAgo, idx) => {
-    const timestamp = now - daysAgo * dayMs + (idx * 3600000);
-    
-    // Bratislava history (EUR)
-    ordersDb.push({
-      id: `ord_hist_bts_${idx}`,
-      storeId: 'store_bratislava_01',
-      merchantId: 'merchant_002',
-      orderNo: `HIST_BTS_${1000 + idx}`,
-      pickupCode: `A${(idx + 10).toString().padStart(3, '0')}`,
-      channel: idx % 2 === 0 ? 'COUNTER_POS' : 'QR_H5',
-      status: 'COMPLETED',
-      paymentStatus: 'PAID',
-      paymentMethod: idx % 3 === 0 ? 'CASH' : 'POS_CARD',
-      currency: 'EUR',
-      currencySymbol: '€',
-      totalAmount: 22.50 + (idx * 4.2),
-      itemsCount: 3,
-      items: [
-        {
-          itemId: `hist_item_1_${idx}`,
-          orderId: `ord_hist_bts_${idx}`,
-          skuId: 'sku_burger_01',
-          productName: '手打双层安格斯厚牛芝士堡',
-          category: '现烤手工汉堡',
-          quantity: 1,
-          unitPrice: 12.50,
-          totalPrice: 12.50,
-          targetStationId: 'station_grill',
-          selectedModifiers: [],
-          stationStatus: 'DONE',
-          prepTimeSeconds: 120,
-        },
-        {
-          itemId: `hist_item_2_${idx}`,
-          orderId: `ord_hist_bts_${idx}`,
-          skuId: 'sku_tea_01',
-          productName: '幽兰幽香・生酪鲜奶茶',
-          category: '招牌鲜奶茶',
-          quantity: 2,
-          unitPrice: 5.00,
-          totalPrice: 10.00,
-          targetStationId: 'station_bar',
-          selectedModifiers: [],
-          stationStatus: 'DONE',
-          prepTimeSeconds: 45,
-        }
-      ],
-      createdAt: timestamp,
-      paidAt: timestamp + 60000,
-      readyAt: timestamp + 400000,
-      completedAt: timestamp + 600000,
-      estimatedWaitMinutes: 5,
-      queuePosition: 0,
-    });
-
-    // Prague history (CZK)
-    ordersDb.push({
-      id: `ord_hist_prg_${idx}`,
-      storeId: 'store_prague_01',
-      merchantId: 'merchant_001',
-      orderNo: `HIST_PRG_${2000 + idx}`,
-      pickupCode: `C${(idx + 20).toString().padStart(3, '0')}`,
-      channel: 'COUNTER_POS',
-      status: 'COMPLETED',
-      paymentStatus: 'PAID',
-      paymentMethod: idx % 2 === 0 ? 'CASH' : 'POS_CARD',
-      currency: 'CZK',
-      currencySymbol: 'Kč',
-      totalAmount: 480 + (idx * 60),
-      itemsCount: 4,
-      items: [
-        {
-          itemId: `hist_prg_1_${idx}`,
-          orderId: `ord_hist_prg_${idx}`,
-          skuId: 'sku_fry_01',
-          productName: '金牌黄金蒜香脆皮炸鸡 (2块)',
-          category: '金牌炸鸡小食',
-          quantity: 2,
-          unitPrice: 160,
-          totalPrice: 320,
-          targetStationId: 'station_fryer',
-          selectedModifiers: [],
-          stationStatus: 'DONE',
-          prepTimeSeconds: 90,
-        },
-        {
-          itemId: `hist_prg_2_${idx}`,
-          orderId: `ord_hist_prg_${idx}`,
-          skuId: 'sku_tea_03',
-          productName: '多肉芝士手剥多汁葡萄',
-          category: '鲜果芝士茶',
-          quantity: 1,
-          unitPrice: 160,
-          totalPrice: 160,
-          targetStationId: 'station_bar',
-          selectedModifiers: [],
-          stationStatus: 'DONE',
-          prepTimeSeconds: 60,
-        }
-      ],
-      createdAt: timestamp - 3600000,
-      paidAt: timestamp - 3540000,
-      readyAt: timestamp - 3200000,
-      completedAt: timestamp - 3000000,
-      estimatedWaitMinutes: 6,
-      queuePosition: 0,
-    });
-  });
-}
-
-initSeedOrders();
 
 // WebSocket Server
 const wss = new WebSocketServer({ server });
@@ -440,20 +107,35 @@ function calculateQueueSummary(): QueueSummary {
 // REST API Endpoints
 // -------------------------------------------------------------
 
-// 1. Get Store Menu & Metadata
+// 1. Get Store Menu & Metadata (Store Isolated)
 app.get('/api/menu', (req, res) => {
-  const productsWithStatus = productsDb.map(p => ({
+  const storeId = (req.query.storeId as string) || currentStoreConfig.storeId || 'store_default_01';
+  
+  // Filter products by storeId or default
+  const storeProducts = productsDb.filter(p => !p.storeId || p.storeId === storeId);
+  const storeCategories = categoriesDb.filter(c => !c.storeId || c.storeId === storeId);
+
+  const productsWithStatus = storeProducts.map(p => ({
     ...p,
     isSoldOut: soldOutSkuIds.has(p.id)
   }));
 
-  const categoriesWithCounts = categoriesDb.map(c => ({
+  const categoriesWithCounts = storeCategories.map(c => ({
     ...c,
-    productCount: productsDb.filter(p => p.category === c.name).length
+    productCount: storeProducts.filter(p => p.category === c.name).length
   }));
 
+  const targetStore = storesDb.find(s => s.id === storeId) || storesDb[0];
+
   res.json({
-    store: currentStoreConfig,
+    store: {
+      ...currentStoreConfig,
+      storeId: targetStore ? targetStore.id : storeId,
+      storeName: targetStore ? targetStore.storeName : currentStoreConfig.storeName,
+      currency: targetStore ? targetStore.currency : 'EUR',
+      defaultCurrency: targetStore ? targetStore.currencySymbol : '€',
+      address: targetStore ? targetStore.address : currentStoreConfig.address,
+    },
     stations: KDS_STATIONS,
     modifierGroups: MODIFIER_GROUPS,
     categories: categoriesWithCounts,
@@ -886,33 +568,59 @@ app.post('/api/admin/inventory/create', (req, res) => {
 // Merchant & Store Manager: Multi-dimension Analytics API
 // -------------------------------------------------------------
 app.get('/api/admin/analytics/sales', (req, res) => {
-  const { storeId, timeRange = 'all', startDate, endDate, category } = req.query;
-  const now = Date.now();
+  const { storeId, merchantId, timeRange, startDate, endDate, category } = req.query;
+  const now = new Date();
   const dayMs = 86400000;
 
   let filteredOrders = ordersDb.filter(o => o.paymentStatus === 'PAID');
 
-  // Filter by store
+  // 1. Filter by merchantId (if specified, filter orders from stores belonging to this merchant)
+  if (merchantId && merchantId !== 'ALL') {
+    const merchant = merchantsDb.find(m => m.id === merchantId);
+    if (merchant && Array.isArray(merchant.assignedStoreIds)) {
+      filteredOrders = filteredOrders.filter(o => merchant.assignedStoreIds.includes(o.storeId));
+    } else {
+      // Fallback: match store's merchantId
+      const merchantStoreIds = storesDb.filter(s => s.merchantId === merchantId).map(s => s.id);
+      filteredOrders = filteredOrders.filter(o => merchantStoreIds.includes(o.storeId));
+    }
+  }
+
+  // 2. Filter by storeId
   if (storeId && storeId !== 'ALL') {
     filteredOrders = filteredOrders.filter(o => o.storeId === storeId);
   }
 
-  // Filter by time range
-  if (timeRange === 'today') {
-    const startOfToday = new Date().setHours(0, 0, 0, 0);
-    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfToday);
+  // 3. Filter by date range or preset (default to current month)
+  if (startDate && endDate) {
+    // Exact date range
+    const start = new Date(startDate as string);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(endDate as string);
+    end.setHours(23, 59, 59, 999);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= start.getTime() && o.createdAt <= end.getTime());
+  } else if (timeRange === 'today') {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfToday.getTime());
   } else if (timeRange === 'yesterday') {
-    const startOfYesterday = new Date().setHours(0, 0, 0, 0) - dayMs;
-    const endOfYesterday = startOfYesterday + dayMs;
-    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfYesterday && o.createdAt < endOfYesterday);
+    const startOfYesterday = new Date();
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    startOfYesterday.setHours(0, 0, 0, 0);
+    const endOfYesterday = new Date(startOfYesterday);
+    endOfYesterday.setHours(23, 59, 59, 999);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= startOfYesterday.getTime() && o.createdAt <= endOfYesterday.getTime());
   } else if (timeRange === 'last7') {
-    filteredOrders = filteredOrders.filter(o => o.createdAt >= now - 7 * dayMs);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= Date.now() - 7 * dayMs);
   } else if (timeRange === 'last30') {
-    filteredOrders = filteredOrders.filter(o => o.createdAt >= now - 30 * dayMs);
-  } else if (startDate && endDate) {
-    const start = new Date(startDate as string).getTime();
-    const end = new Date(endDate as string).getTime() + dayMs;
-    filteredOrders = filteredOrders.filter(o => o.createdAt >= start && o.createdAt <= end);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= Date.now() - 30 * dayMs);
+  } else if (timeRange === 'all') {
+    // All history
+  } else {
+    // Default: Current month (当月 1 号 00:00 到当月末 23:59)
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    filteredOrders = filteredOrders.filter(o => o.createdAt >= firstDayOfMonth.getTime() && o.createdAt <= lastDayOfMonth.getTime());
   }
 
   // Aggregate Metrics
@@ -990,21 +698,27 @@ app.get('/api/admin/analytics/sales', (req, res) => {
 
 // Categories Management
 app.get('/api/admin/categories', (req, res) => {
-  const categoriesWithCounts = categoriesDb.map(c => ({
+  const storeId = req.query.storeId as string;
+  let filteredCategories = [...categoriesDb];
+  if (storeId) {
+    filteredCategories = filteredCategories.filter(c => !c.storeId || c.storeId === storeId);
+  }
+  const categoriesWithCounts = filteredCategories.map(c => ({
     ...c,
-    productCount: productsDb.filter(p => p.category === c.name).length
+    productCount: productsDb.filter(p => p.category === c.name && (!storeId || !p.storeId || p.storeId === storeId)).length
   }));
   res.json({ categories: categoriesWithCounts });
 });
 
 app.post('/api/admin/categories', (req, res) => {
   try {
-    const { name, icon = 'CupSoda', sortOrder = categoriesDb.length + 1 } = req.body;
+    const { name, icon = 'CupSoda', sortOrder = categoriesDb.length + 1, storeId = 'store_default_01' } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Category name is required' });
     }
     const newCategory: MenuCategory = {
       id: `cat_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      storeId,
       name: name.trim(),
       icon,
       sortOrder: Number(sortOrder) || categoriesDb.length + 1,
@@ -1024,7 +738,7 @@ app.post('/api/admin/categories', (req, res) => {
 app.put('/api/admin/categories/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, icon, sortOrder, isActive } = req.body;
+    const { name, icon, sortOrder, isActive, storeId } = req.body;
     const cat = categoriesDb.find(c => c.id === id);
     if (!cat) return res.status(404).json({ error: 'Category not found' });
 
@@ -1033,10 +747,11 @@ app.put('/api/admin/categories/:id', (req, res) => {
     if (icon !== undefined) cat.icon = icon;
     if (sortOrder !== undefined) cat.sortOrder = Number(sortOrder);
     if (isActive !== undefined) cat.isActive = Boolean(isActive);
+    if (storeId !== undefined) cat.storeId = storeId;
 
     if (name && name.trim() !== oldName) {
       productsDb.forEach(p => {
-        if (p.category === oldName) {
+        if (p.category === oldName && (!cat.storeId || !p.storeId || p.storeId === cat.storeId)) {
           p.category = name.trim();
         }
       });
@@ -1067,26 +782,60 @@ app.delete('/api/admin/categories/:id', (req, res) => {
 
 // Products Management
 app.get('/api/admin/products', (req, res) => {
-  res.json({ products: productsDb });
+  const storeId = req.query.storeId as string;
+  let filtered = [...productsDb];
+  if (storeId) {
+    filtered = filtered.filter(p => !p.storeId || p.storeId === storeId);
+  }
+  res.json({ products: filtered });
 });
 
 app.post('/api/admin/products', (req, res) => {
   try {
-    const { name, category, basePrice, targetStationId = 'station_bar', prepTimeSeconds = 60, image, description, isRecommended = false } = req.body;
+    const { 
+      name, 
+      category, 
+      basePrice, 
+      targetStationId = 'station_bar', 
+      prepTimeSeconds = 60, 
+      image, 
+      description, 
+      isRecommended = false, 
+      storeId = 'store_default_01',
+      tags = [],
+      recipeBOM = [] 
+    } = req.body;
+
     if (!name || !category || basePrice === undefined) {
       return res.status(400).json({ error: 'Name, category, and basePrice are required' });
     }
 
+    // Calculate BOM cost & gross margin
+    let estimatedCost = 0;
+    if (Array.isArray(recipeBOM) && recipeBOM.length > 0) {
+      recipeBOM.forEach((bom: any) => {
+        const cost = (Number(bom.quantity) || 0) * (Number(bom.unitCost) || 0);
+        estimatedCost += cost;
+      });
+    }
+    const priceNum = Number(basePrice);
+    const grossMargin = priceNum > 0 ? Number((((priceNum - estimatedCost) / priceNum) * 100).toFixed(1)) : 0;
+
     const newProduct: ProductSKU = {
       id: `sku_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      storeId,
       name: name.trim(),
       category: category.trim(),
-      basePrice: Number(basePrice),
+      basePrice: priceNum,
       targetStationId,
       prepTimeSeconds: Number(prepTimeSeconds),
       image: image || 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=500&auto=format&fit=crop&q=80',
       description: description || '',
       isRecommended: Boolean(isRecommended),
+      tags,
+      recipeBOM,
+      estimatedCost: Number(estimatedCost.toFixed(3)),
+      grossMargin,
     };
 
     productsDb.unshift(newProduct);
@@ -1103,7 +852,7 @@ app.put('/api/admin/products/:id', (req, res) => {
     const prod = productsDb.find(p => p.id === id);
     if (!prod) return res.status(404).json({ error: 'Product not found' });
 
-    const { name, category, basePrice, targetStationId, prepTimeSeconds, image, description, isRecommended } = req.body;
+    const { name, category, basePrice, targetStationId, prepTimeSeconds, image, description, isRecommended, storeId, tags, recipeBOM } = req.body;
     if (name !== undefined) prod.name = name.trim();
     if (category !== undefined) prod.category = category.trim();
     if (basePrice !== undefined) prod.basePrice = Number(basePrice);
@@ -1112,6 +861,20 @@ app.put('/api/admin/products/:id', (req, res) => {
     if (image !== undefined) prod.image = image;
     if (description !== undefined) prod.description = description;
     if (isRecommended !== undefined) prod.isRecommended = Boolean(isRecommended);
+    if (storeId !== undefined) prod.storeId = storeId;
+    if (tags !== undefined) prod.tags = tags;
+    if (recipeBOM !== undefined) prod.recipeBOM = recipeBOM;
+
+    // Recalculate cost & margin
+    let estimatedCost = 0;
+    if (Array.isArray(prod.recipeBOM) && prod.recipeBOM.length > 0) {
+      prod.recipeBOM.forEach((bom: any) => {
+        const cost = (Number(bom.quantity) || 0) * (Number(bom.unitCost) || 0);
+        estimatedCost += cost;
+      });
+    }
+    prod.estimatedCost = Number(estimatedCost.toFixed(3));
+    prod.grossMargin = prod.basePrice > 0 ? Number((((prod.basePrice - estimatedCost) / prod.basePrice) * 100).toFixed(1)) : 0;
 
     broadcastWSEvent('MENU_UPDATED', { products: productsDb });
     res.json({ success: true, product: prod, products: productsDb });
